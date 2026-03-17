@@ -1,43 +1,26 @@
-const CACHE_NAME = 'ledgerhub-v1';
-const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.json'
-];
+// Self-destructing service worker — v2 (2026-03-17)
+// This replaces the old caching SW. On activation it nukes every
+// cache and unregisters itself so the browser fetches everything
+// fresh from the network.
 
-// Install service worker and cache resources
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        return cache.addAll(urlsToCache);
-      })
-  );
+self.addEventListener('install', () => {
+  // Take over immediately, don't wait for old tabs to close
+  self.skipWaiting();
 });
 
-// Fetch from cache, fallback to network
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Return cached version or fetch from network
-        return response || fetch(event.request);
-      })
-  );
-});
-
-// Clean up old caches
 self.addEventListener('activate', (event) => {
-  const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (!cacheWhitelist.includes(cacheName)) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
+    caches.keys()
+      .then((names) => Promise.all(names.map((n) => caches.delete(n))))
+      .then(() => self.clients.claim())
+      .then(() => self.registration.unregister())
+      .then(() => {
+        // Tell every open tab to hard-reload so they pick up fresh assets
+        self.clients.matchAll({ type: 'window' }).then((clients) => {
+          clients.forEach((client) => client.navigate(client.url));
+        });
+      })
   );
 });
+
+// No fetch handler — everything goes straight to the network
