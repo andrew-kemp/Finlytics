@@ -111,7 +111,7 @@ export default function ExportModal({ onClose }) {
             const rows = filterByDate(data[sec.key] || [], dateFrom, dateTo);
             if (!rows.length) continue;
             const csv = toCsv(rows);
-            downloadFile(csv, `financehub-${sec.key}-${today}.csv`, 'text/csv');
+            downloadFile(csv, `finlytics-${sec.key}-${today}.csv`, 'text/csv');
             count++;
             await new Promise(r => setTimeout(r, 300)); // stagger downloads
         }
@@ -129,7 +129,7 @@ export default function ExportModal({ onClose }) {
             payload[sec.key] = filterByDate(data[sec.key] || [], dateFrom, dateTo);
         }
         const content = JSON.stringify(payload, null, 2);
-        downloadFile(content, `financehub-export-${today}.json`, 'application/json');
+        downloadFile(content, `finlytics-export-${today}.json`, 'application/json');
         setStatus('✅ JSON file downloaded.');
         setLoading(false);
     };

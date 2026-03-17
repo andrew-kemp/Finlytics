@@ -222,7 +222,7 @@ function MainContent() {
                     <span></span>
                 </button>
                 <div className="mobile-header-content">
-                    <h1>Finlytics IT</h1>
+                    <h1>Finlytics</h1>
                 </div>
             </div>
 

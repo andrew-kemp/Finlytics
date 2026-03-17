@@ -38,7 +38,7 @@ function Login() {
     return (
         <div className="login-container">
             <div className="login-card">
-                <h1>FinanceHub</h1>
+                <h1>Finlytics</h1>
                 <p>Sign in with your Microsoft account</p>
                 {error && <div className="error-message">{error}</div>}
                 <form onSubmit={handleSubmit}>

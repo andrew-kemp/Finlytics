@@ -35,7 +35,7 @@ function googleMapsUrl(start, end) {
 async function fetchDrivingDistanceMiles(start, end) {
     const geocode = async (address) => {
         const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`;
-        const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'FinanceHub/1.0' } });
+        const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'Finlytics/1.0' } });
         if (!res.ok) throw new Error('Geocoding request failed');
         const data = await res.json();
         if (!data.length) throw new Error(`Could not find location: "${address}"`);
