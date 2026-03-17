@@ -70,9 +70,10 @@ namespace FinanceHubFunctions.Functions
 
         [Function("GetProfitAndLoss")]
         public async Task<HttpResponseData> GetProfitAndLoss(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "reports/profit-and-loss/{financialYear}")] HttpRequestData req,
-            string financialYear)
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "reports/profit-and-loss/{startYearStr}/{endYearShort}")] HttpRequestData req,
+            string startYearStr, string endYearShort)
         {
+            var financialYear = $"{startYearStr}/{endYearShort}";
             _logger.LogInformation("GetProfitAndLoss triggered for FY: {FY}", financialYear);
 
             try
@@ -82,31 +83,19 @@ namespace FinanceHubFunctions.Functions
                 int fyStartDay = settings?.FYStartDay ?? 1;
 
                 // Parse financial year e.g. "2025/26" → start = 2025
-                var startYear = int.Parse(financialYear.Split('/')[0]);
+                var startYear = int.Parse(startYearStr);
                 var periodStart = new DateTime(startYear, fyStartMonth, fyStartDay);
                 var periodEnd = new DateTime(startYear + 1, fyStartMonth, fyStartDay).AddDays(-1);
 
-                // ── Fetch all data in parallel ──
-                var invoicesTask = _invoiceRepo.GetAllAsync();
-                var expensesTask = _expenseRepo.GetAllAsync();
-                var assetsTask = _assetRepo.GetAllAsync();
-                var subscriptionsTask = _subscriptionRepo.GetAllAsync();
-                var payrollRunsTask = _payrollRunRepo.GetAllAsync();
-                var mileageTask = _mileageRepo.GetAllAsync();
-                var ledgerTask = _ledgerRepo.GetAllAsync();
-                var dlaTask = _dlaRepo.GetAllAsync();
-
-                await Task.WhenAll(invoicesTask, expensesTask, assetsTask, subscriptionsTask,
-                                   payrollRunsTask, mileageTask, ledgerTask, dlaTask);
-
-                var allInvoices = await invoicesTask;
-                var allExpenses = await expensesTask;
-                var allAssets = await assetsTask;
-                var allSubscriptions = await subscriptionsTask;
-                var allPayrollRuns = await payrollRunsTask;
-                var allMileage = await mileageTask;
-                var allLedger = await ledgerTask;
-                var allDla = await dlaTask;
+                // ── Fetch all data sequentially (shared DbContext) ──
+                var allInvoices = await _invoiceRepo.GetAllAsync();
+                var allExpenses = await _expenseRepo.GetAllAsync();
+                var allAssets = await _assetRepo.GetAllAsync();
+                var allSubscriptions = await _subscriptionRepo.GetAllAsync();
+                var allPayrollRuns = await _payrollRunRepo.GetAllAsync();
+                var allMileage = await _mileageRepo.GetAllAsync();
+                var allLedger = await _ledgerRepo.GetAllAsync();
+                var allDla = await _dlaRepo.GetAllAsync();
 
                 // ── Filter to financial year ──
                 var invoices = allInvoices
@@ -288,9 +277,10 @@ namespace FinanceHubFunctions.Functions
 
         [Function("GetBalanceSheet")]
         public async Task<HttpResponseData> GetBalanceSheet(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "reports/balance-sheet/{financialYear}")] HttpRequestData req,
-            string financialYear)
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "reports/balance-sheet/{startYearStr}/{endYearShort}")] HttpRequestData req,
+            string startYearStr, string endYearShort)
         {
+            var financialYear = $"{startYearStr}/{endYearShort}";
             _logger.LogInformation("GetBalanceSheet triggered for FY: {FY}", financialYear);
 
             try
@@ -298,30 +288,18 @@ namespace FinanceHubFunctions.Functions
                 var settings = await _settingsRepo.GetDefaultAsync();
                 int fyStartMonth = settings?.FYStartMonth ?? 4;
                 int fyStartDay = settings?.FYStartDay ?? 1;
-                var startYear = int.Parse(financialYear.Split('/')[0]);
+                var startYear = int.Parse(startYearStr);
                 var periodEnd = new DateTime(startYear + 1, fyStartMonth, fyStartDay).AddDays(-1);
 
-                // ── Fetch all data in parallel ──
-                var invoicesTask = _invoiceRepo.GetAllAsync();
-                var expensesTask = _expenseRepo.GetAllAsync();
-                var assetsTask = _assetRepo.GetAllAsync();
-                var bankTask = _bankAccountRepo.GetAllAsync();
-                var dlaTask = _dlaRepo.GetAllAsync();
-                var ledgerTask = _ledgerRepo.GetAllAsync();
-                var shareholdersTask = _shareholderRepo.GetAllAsync();
-                var vatTask = _vatReturnRepo.GetAllAsync();
-
-                await Task.WhenAll(invoicesTask, expensesTask, assetsTask, bankTask,
-                                   dlaTask, ledgerTask, shareholdersTask, vatTask);
-
-                var allInvoices = await invoicesTask;
-                var allExpenses = await expensesTask;
-                var allAssets = await assetsTask;
-                var allBankAccounts = await bankTask;
-                var allDla = await dlaTask;
-                var allLedger = await ledgerTask;
-                var allShareholders = await shareholdersTask;
-                var allVatReturns = await vatTask;
+                // ── Fetch all data sequentially (shared DbContext) ──
+                var allInvoices = await _invoiceRepo.GetAllAsync();
+                var allExpenses = await _expenseRepo.GetAllAsync();
+                var allAssets = await _assetRepo.GetAllAsync();
+                var allBankAccounts = await _bankAccountRepo.GetAllAsync();
+                var allDla = await _dlaRepo.GetAllAsync();
+                var allLedger = await _ledgerRepo.GetAllAsync();
+                var allShareholders = await _shareholderRepo.GetAllAsync();
+                var allVatReturns = await _vatReturnRepo.GetAllAsync();
 
                 var ledgerInFY = allLedger
                     .Where(l => l.FinancialYear == financialYear ||

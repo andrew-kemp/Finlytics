@@ -2386,7 +2386,7 @@ export async function getMonzoBalance() {
 
 export async function getProfitAndLoss(financialYear) {
     const headers = await getAuthHeaders();
-    const response = await fetch(`${API_BASE}/reports/profit-and-loss/${encodeURIComponent(financialYear)}`, { headers });
+    const response = await fetch(`${API_BASE}/reports/profit-and-loss/${financialYear}`, { headers });
     if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         throw new Error(err.error || 'Failed to fetch Profit & Loss report');
@@ -2396,7 +2396,7 @@ export async function getProfitAndLoss(financialYear) {
 
 export async function getBalanceSheet(financialYear) {
     const headers = await getAuthHeaders();
-    const response = await fetch(`${API_BASE}/reports/balance-sheet/${encodeURIComponent(financialYear)}`, { headers });
+    const response = await fetch(`${API_BASE}/reports/balance-sheet/${financialYear}`, { headers });
     if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         throw new Error(err.error || 'Failed to fetch Balance Sheet');
