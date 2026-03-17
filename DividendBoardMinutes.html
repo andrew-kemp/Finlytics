@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <title>Board Minutes - Dividend Declaration - {{CompanyName}} - {{DividendId}}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --brand: #0f6cbd;       /* adjust to your brand colour */
+      --text: #1b1b1b;
+      --muted: #666;
+      --border: #e5e5e5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 24px; font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text); line-height: 1.45;
+    }
+    header {
+      display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
+      border-bottom: 2px solid var(--brand); padding-bottom: 12px;
+    }
+    .logo {
+      width: 120px; height: auto; object-fit: contain;
+    }
+    .company-block {
+      flex: 1;
+    }
+    h1 {
+      font-size: 20px; margin: 16px 0 8px 0; color: var(--brand);
+    }
+    h2 {
+      font-size: 16px; margin: 0 0 12px 0; color: var(--text);
+    }
+    .meta {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px;
+      font-size: 13px; color: var(--muted); margin-bottom: 16px;
+    }
+    .section {
+      border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin: 16px 0;
+      background: #fff;
+    }
+    .row { display: flex; gap: 16px; }
+    .row > div { flex: 1; }
+    .list { margin: 0; padding-left: 18px; }
+    .sign-block {
+      margin-top: 40px; display: flex; gap: 40px; flex-wrap: wrap;
+    }
+    .signature {
+      width: 260px; border-top: 1px solid var(--border); padding-top: 8px;
+      font-size: 13px; color: var(--muted);
+    }
+    .signature img {
+      display: block; height: 56px; width: auto; margin-bottom: 4px;
+    }
+    footer {
+      margin-top: 24px; font-size: 11px; color: var(--muted);
+      border-top: 1px dashed var(--border); padding-top: 8px;
+    }
+    @media print {
+      body { margin: 12mm; }
+      header { border-bottom: none; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img class="logo" src="{{CompanyLogoUrl}}" alt="{{CompanyName}} logo" />
+    <div class="company-block">
+      <strong>{{CompanyName}}</strong><br />
+      {{CompanyAddressLine1}}<br />
+      {{CompanyAddressLine2}}<br />
+      {{CompanyCity}} {{CompanyPostcode}}<br />
+      Company No: {{CompanyNumber}} | VAT: {{CompanyVATNumber}}
+    </div>
+  </header>
+
+  <h1>Board Minutes — Dividend Declaration</h1>
+  <div class="meta">
+    <div><strong>Meeting date:</strong> {{MeetingDate}}</div>
+    <div><strong>Minute ref:</strong> {{DividendId}}</div>
+    <div><strong>Location:</strong> {{MeetingLocation}}</div>
+    <div><strong>Prepared by:</strong> {{PreparedByName}}</div>
+  </div>
+
+  <div class="section">
+    <h2>Directors present</h2>
+    <p>{{DirectorsPresent}}</p>
+  </div>
+
+  <div class="section">
+    <h2>Background</h2>
+    <p>
+      The director(s) reviewed the Company's management accounts and confirmed that
+      there are sufficient distributable profits to lawfully make a distribution.
+      The Company's Articles of Association were considered, and no restrictions apply.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>Resolution</h2>
+    <p>
+      It was resolved that the Company pay an <strong>{{DividendType}}</strong> dividend of
+      <strong>£{{DividendPerShare}}</strong> per {{ShareClass}} share, amounting to a total dividend of
+      <strong>£{{DividendTotal}}</strong>, to those shareholders on the register at the close of business on
+      <strong>{{RecordDate}}</strong>, with a payment date of <strong>{{PaymentDate}}</strong>.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>Approvals</h2>
+    <ul class="list">
+      <li>Dividend approved by the board on {{MeetingDate}}.</li>
+      <li>Authorised signatory to issue dividend vouchers to each shareholder.</li>
+      <li>Company Secretary/Director to file these minutes with the statutory records.</li>
+    </ul>
+  </div>
+
+  <div class="sign-block">
+    <div class="signature">
+      <img src="{{DirectorSignatureUrl}}" alt="Director signature" />
+      Signed: {{DirectorName}}<br />
+      Position: Director<br />
+      Date: {{SignatureDate}}
+    </div>
+  </div>
+
+  <footer>
+    {{CompanyName}} | Registered Office: {{CompanyAddressLine1}}, {{CompanyCity}} {{CompanyPostcode}} | Company No: {{CompanyNumber}}
+  </footer>
+</body>
+</html>

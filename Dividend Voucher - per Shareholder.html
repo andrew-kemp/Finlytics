@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Dividend Voucher</title>
+<style>
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 40px; color: #111; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .logo-placeholder { width: 120px; height: 60px; border: 2px dashed #ccc; display: flex; align-items: center; justify-content: center; color: #999; font-size: 11px; margin-bottom: 12px; border-radius: 4px; }
+  h1 { font-size: 20px; margin: 0 0 10px 0; }
+  .box { border: 1px solid #ddd; border-radius: 6px; padding: 18px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 10px; }
+  .label { color: #555; font-size: 12px; margin-bottom: 4px; }
+  .value { font-size: 16px; }
+  .para { margin: 14px 0; line-height: 1.45; }
+  .signature-image { max-width: 340px; height: 80px; border: 1px solid #ddd; border-radius: 4px; background: #fafafa; display: flex; align-items: center; padding: 8px; margin-top: 12px; }
+  .signature-image img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .line { margin-top: 28px; border-bottom: 1px solid #ddd; width: 300px; }
+  .small { font-size: 12px; color: #555; }
+  @media print { .signature-buttons { display: none; } .signature-canvas { border: none; background: white; } }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <img src="{{COMPANY_LOGO_URL}}" alt="Company Logo" style="max-width: 120px; max-height: 60px; margin-bottom: 12px;" />
+    <h1>Dividend Voucher</h1>
+    <div class="box">
+      <div class="row">
+        <div>
+          <div class="label">Company</div>
+          <div class="value"><strong>{{COMPANY_NAME}}</strong></div>
+        </div>
+        <div>
+          <div class="label">Company Number</div>
+          <div class="value">{{COMPANY_NUMBER}}</div>
+        </div>
+        <div>
+          <div class="label">Registered office</div>
+          <div class="value">{{REGISTERED_OFFICE_ADDRESS}}</div>
+        </div>
+        <div>
+          <div class="label">Voucher number</div>
+          <div class="value">DV-{{YEAR}}-{{SEQUENCE}}</div>
+        </div>
+        <div>
+          <div class="label">Shareholder</div>
+          <div class="value"><strong>{{HOLDER_FULL_NAME}}</strong></div>
+        </div>
+        <div>
+          <div class="label">Class of share</div>
+          <div class="value"><strong>{{SHARE_CLASS}}</strong></div>
+        </div>
+        <div>
+          <div class="label">Number of shares</div>
+          <div class="value"><strong>{{NUMBER_OF_SHARES}}</strong></div>
+        </div>
+        <div>
+          <div class="label">Dividend per share</div>
+          <div class="value"><strong>£{{AMOUNT_PER_SHARE}}</strong></div>
+        </div>
+        <div>
+          <div class="label">Dividend date</div>
+          <div class="value"><strong>{{PAYMENT_DATE}}</strong></div>
+        </div>
+        <div>
+          <div class="label">Record date</div>
+          <div class="value"><strong>{{RECORD_DATE}}</strong></div>
+        </div>
+      </div>
+
+      <p class="para"><strong>Gross dividend</strong>: £{{GROSS_AMOUNT}}<br>
+      <strong>Tax credit / deduction</strong>: n/a for UK company dividends paid post‑2016 dividend allowance rules, unless otherwise required for the recipient’s records.<br>
+      <strong>Net dividend paid</strong>: £{{NET_AMOUNT}}</p>
+
+      <div style="margin-top: 24px;">
+        <div><strong>Director Signature</strong></div>
+        <div class="signature-image">
+          <img src="{{DIRECTOR_SIGNATURE}}" alt="Director Signature" />
+        </div>
+        <div class="small" style="margin-top: 8px;">{{DIRECTOR_NAME}}, Director</div>
+        <div class="small">Date: {{SIGN_DATE}}</div>
+      </div>
+    </div>
+  </div>
+  
+</body>
+</html>

@@ -1,0 +1,89 @@
+﻿{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    }
+  },
+  "triggers": {
+    "Recurrence": {
+      "recurrence": {
+        "frequency": "Day",
+        "interval": 2,
+        "schedule": {
+          "hours": ["9"],
+          "minutes": [0]
+        },
+        "timeZone": "GMT Standard Time"
+      },
+      "type": "Recurrence"
+    }
+  },
+  "actions": {
+    "Get_Unpaid_Invoices": {
+      "runAfter": {},
+      "type": "Http",
+      "inputs": {
+        "method": "GET",
+        "uri": "https://func-financehub-2669.azurewebsites.net/api/GetUnpaidInvoices?daysOverdue=7"
+      }
+    },
+    "Parse_JSON": {
+      "runAfter": {
+        "Get_Unpaid_Invoices": ["Succeeded"]
+      },
+      "type": "ParseJson",
+      "inputs": {
+        "content": "@body('Get_Unpaid_Invoices')",
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "integer" },
+              "invoiceNumber": { "type": "string" },
+              "customerName": { "type": "string" },
+              "customerEmail": { "type": "string" },
+              "amountGross": { "type": "number" },
+              "dateIssued": { "type": "string" },
+              "daysOverdue": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+    "For_each_Invoice": {
+      "foreach": "@body('Parse_JSON')",
+      "actions": {
+        "Send_Reminder_Email": {
+          "runAfter": {},
+          "type": "ApiConnection",
+          "inputs": {
+            "host": {
+              "connection": {
+                "name": "@parameters('$connections')['office365']['connectionId']"
+              }
+            },
+            "method": "post",
+            "path": "/v2/Mail",
+            "body": {
+              "To": "@items('For_each_Invoice')['customerEmail']",
+              "Cc": "andrew@kemponline.co.uk",
+              "From": "invoices@andykemp.com",
+              "Subject": "Payment Reminder: Invoice @{items('For_each_Invoice')['invoiceNumber']}",
+              "Body": "<html><body><p>Dear @{items('For_each_Invoice')['customerName']},</p><p>This is a friendly reminder that invoice <strong>@{items('For_each_Invoice')['invoiceNumber']}</strong> is now <strong>@{items('For_each_Invoice')['daysOverdue']} days overdue</strong>.</p><table style='border-collapse: collapse; width: 100%; max-width: 500px;'><tr><td style='padding: 10px; border: 1px solid #ddd;'><strong>Invoice Number:</strong></td><td style='padding: 10px; border: 1px solid #ddd;'>@{items('For_each_Invoice')['invoiceNumber']}</td></tr><tr><td style='padding: 10px; border: 1px solid #ddd;'><strong>Date Issued:</strong></td><td style='padding: 10px; border: 1px solid #ddd;'>@{formatDateTime(items('For_each_Invoice')['dateIssued'], 'dd MMM yyyy')}</td></tr><tr><td style='padding: 10px; border: 1px solid #ddd;'><strong>Amount Due:</strong></td><td style='padding: 10px; border: 1px solid #ddd;'>GBP @{items('For_each_Invoice')['amountGross']}</td></tr></table><p style='margin-top: 20px;'><a href='https://brave-pond-0ee5a2d03.2.azurestaticapps.net/invoice/@{items('For_each_Invoice')['id']}?pay=1' style='background: #3498db; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;'>Mark as Paid</a></p><p style='margin-top: 30px; color: #777; font-size: 0.9em;'>If you have already paid this invoice, please disregard this reminder.</p><p style='color: #777; font-size: 0.9em;'>For any questions, please contact us at andrew@kemponline.co.uk</p></body></html>",
+              "Importance": "Normal"
+            }
+          }
+        }
+      },
+      "runAfter": {
+        "Parse_JSON": ["Succeeded"]
+      },
+      "type": "Foreach"
+    }
+  },
+  "outputs": {}
+}

@@ -1,0 +1,66 @@
+# =========================
+# .NET / C# Build Outputs
+# =========================
+bin/
+obj/
+publish/
+publish_output/
+
+# =========================
+# Node.js
+# =========================
+node_modules/
+dist/
+
+# =========================
+# Deployment Artifacts
+# =========================
+*.zip
+deploy.zip
+function-deploy.zip
+functionapp.zip
+new_deploy.zip
+publish.zip
+publish_output.zip
+swa-deploy.zip
+deploy-swa.zip
+
+# =========================
+# Local Settings & Secrets
+# =========================
+local.settings.json
+function-settings.json
+.env
+*.env.local
+*.env.development
+*.env.production
+
+# =========================
+# Logs
+# =========================
+func-logs/
+*.log
+
+# =========================
+# IDE / Editor
+# =========================
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# =========================
+# OS Files
+# =========================
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# =========================
+# Misc Temp Files
+# =========================
+temp-migration.sql
+cert-output/

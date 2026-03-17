@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <title>Share Certificate - {{COMPANY_NAME}} - {{CERTIFICATE_NUMBER}}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --brand: #0f6cbd;
+      --text: #1b1b1b;
+      --muted: #666;
+      --border: #cfd6df;
+    }
+
+    body {
+      margin: 18mm;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: var(--text);
+      background: #fff;
+      line-height: 1.45;
+    }
+
+    .frame {
+      border: 2px solid var(--brand);
+      padding: 18mm 16mm;
+      position: relative;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 2px solid var(--brand);
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+
+    .logo {
+      width: 120px;
+      height: auto;
+      object-fit: contain;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 24px;
+      color: var(--brand);
+      margin: 10px 0;
+    }
+
+    .cert-no {
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+
+    .statement {
+      font-size: 14px;
+      text-align: justify;
+      margin: 16px 0;
+    }
+
+    .box {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fafcfe;
+      margin-top: 16px;
+      font-size: 14px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px 20px;
+    }
+
+    .label {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .value {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .signing {
+      margin-top: 40px;
+      display: flex;
+      gap: 60px;
+    }
+
+    .sig {
+      width: 280px;
+      border-top: 1px solid var(--border);
+      padding-top: 8px;
+      position: relative;
+      font-size: 13px;
+    }
+
+    .sig img {
+      position: absolute;
+      top: -56px;
+      left: 0;
+      height: 52px;
+      width: auto;
+    }
+
+    footer {
+      margin-top: 30px;
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+      border-top: 1px dashed var(--border);
+      padding-top: 6px;
+    }
+
+    .watermark {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 120px;
+      opacity: 0.06;
+      color: var(--text);
+      user-select: none;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+
+    <!-- Optional watermark -->
+    {{OPTIONAL_WATERMARK}}
+
+    <header>
+      <!-- Company Logo -->
+      <img class="logo" src="{{COMPANY_LOGO_URL}}" alt="Company Logo" />
+
+      <div>
+        <strong>{{COMPANY_NAME}}</strong><br>
+        {{REGISTERED_OFFICE_ADDRESS}}<br>
+        Company Number, {{COMPANY_NUMBER}}
+      </div>
+    </header>
+
+    <h1>Share Certificate</h1>
+    <div class="cert-no">Certificate Number, <strong>{{CERTIFICATE_NUMBER}}</strong></div>
+
+    <div class="statement">
+      This is to certify that <strong>{{HOLDER_FULL_NAME}}</strong>, of 
+      <strong>{{HOLDER_ADDRESS}}</strong>, 
+      is the registered holder of the shares described below in 
+      <strong>{{COMPANY_NAME}}</strong>.
+    </div>
+
+    <div class="box">
+      <div class="grid">
+        <div>
+          <div class="label">Share Class</div>
+          <div class="value">{{SHARE_CLASS}}</div>
+        </div>
+        <div>
+          <div class="label">Number of Shares</div>
+          <div class="value">{{NUMBER_OF_SHARES}}</div>
+        </div>
+        <div>
+          <div class="label">Issue Date</div>
+          <div class="value">{{ISSUE_DATE_DD_MON_YYYY}}</div>
+        </div>
+        <div>
+          <div class="label">Share Numbers</div>
+          <div class="value">{{FROM_TO_NUMBERS}}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="statement">
+      The shares are fully paid and rank in accordance with the rights set out in the Company's Articles of Association. 
+      This certificate is evidence of title to these shares.
+    </div>
+
+    <div class="signing">
+      <div class="sig">
+        <!-- Director Signature -->
+        <img src="{{DIRECTOR_SIGNATURE}}" alt="Director Signature" />
+        Signed, Director<br>
+        <strong>{{DIRECTOR_NAME}}</strong><br>
+        Date, {{SIGN_DATE}}
+      </div>
+
+      <div class="sig">
+        <!-- Second signatory optional (set blank if not used) -->
+        <img src="{{AUTHORIZED_OFFICER_SIGNATURE}}" alt="Authorized Officer Signature" />
+        Signed, Authorised Officer<br>
+        <strong>{{AUTHORIZED_OFFICER_NAME}}</strong><br>
+        Date, {{SIGN_DATE}}
+      </div>
+    </div>
+
+    <footer>
+      Keep this certificate with the Company's statutory records. A replacement may be issued upon evidence and indemnity.
+    </footer>
+
+  </div>
+</body>
+</html>

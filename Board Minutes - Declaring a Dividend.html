@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Board Minutes - Dividend Declaration</title>
+<style>
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 40px; color: #111; }
+  .wrap { max-width: 840px; margin: 0 auto; }
+  .logo-placeholder { width: 120px; height: 60px; border: 2px dashed #ccc; display: flex; align-items: center; justify-content: center; color: #999; font-size: 11px; margin-bottom: 12px; border-radius: 4px; }
+  h1 { font-size: 20px; margin: 0 0 6px 0; }
+  .meta, .small { color: #555; font-size: 14px; }
+  .section { margin-top: 18px; }
+  ol { margin: 8px 0 0 18px; }
+  .sign { margin-top: 28px; }
+  .signature-container { margin-top: 32px; }
+  .signature-image { max-width: 340px; height: 80px; border: 1px solid #ddd; border-radius: 4px; background: #fafafa; display: flex; align-items: center; padding: 8px; }
+  .signature-image img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .line { margin-top: 32px; border-bottom: 1px solid #ddd; width: 340px; }
+  @media print { .signature-buttons { display: none; } .signature-canvas { border: none; background: white; } }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <img src="{{COMPANY_LOGO_URL}}" alt="Company Logo" style="max-width: 120px; max-height: 60px; margin-bottom: 12px;" />
+    <h1>{{COMPANY_NAME}}</h1>
+    <div class="meta">Company Number: {{COMPANY_NUMBER}}</div>
+    <div class="section">
+      <strong>Minutes of a meeting of the Board of Directors</strong><br>
+      Date: {{MEETING_DATE}}<br>
+      Time and place: {{MEETING_TIME_AND_PLACE}}
+    </div>
+
+    <div class="section"><strong>Present</strong>: {{DIRECTOR_NAME}} (Director)</div>
+
+    <div class="section"><strong>Chair</strong>: {{DIRECTOR_NAME}} took the chair and noted that the meeting was quorate.</div>
+
+    <div class="section">
+      <strong>Declarations of interest</strong>: The director considered any interests and confirmed none that would prevent participation in the meeting.
+    </div>
+
+    <div class="section">
+      <strong>Dividend</strong>:
+      <ol>
+        <li>The Board reviewed the Company’s management accounts to {{ACCOUNTS_TO_DATE}} and considered that the Company has sufficient distributable profits to pay the proposed dividend.</li>
+        <li>It was <strong>resolved</strong> to declare an <strong>interim dividend</strong> on the <strong>{{SHARE_CLASS}}</strong> shares of <strong>£{{AMOUNT_PER_SHARE}}</strong> per share, payable on <strong>{{PAYMENT_DATE}}</strong> to holders registered at close of business on <strong>{{RECORD_DATE}}</strong>.</li>
+        <li>The director is authorised to complete and issue dividend vouchers to each shareholder and to make payment by bank transfer.</li>
+      </ol>
+    </div>
+
+    <div class="section">
+      There being no further business, the chair closed the meeting.
+    </div>
+
+    <div class="sign">
+      <div class="signature-container">
+        <div><strong>Director Signature</strong></div>
+        <div class="signature-image">
+          <img src="{{DIRECTOR_SIGNATURE}}" alt="Director Signature" />
+        </div>
+        <div style="margin-top: 8px;">{{DIRECTOR_NAME}}, Director</div>
+        <div class="small">Date: {{SIGN_DATE}}</div>
+      </div>
+      
+      <div class="signature-container" style="margin-top: 24px;">
+        <div><strong>Authorized Officer Signature</strong> <span class="small">(optional - will use Director signature if not provided)</span></div>
+        <canvas id="officerSignature" class="signature-canvas" width="340" height="80"></canvas>
+        <div class="signature-buttons">
+          <button onclick="clearSignature('officerSignature')">Clear</button>
+          <button onclick="saveSignature('officerSignature', 'officer')">Save</button>
+          <button onclick="useDirectorSignature()">Use Director Signature</button>
+        </div>
+        <div style="margin-top: 8px;">{{AUTHORIZED_OFFICER_NAME}}, Authorized Signatory</div>
+          <div class="signature-image">
+            <img src="{{AUTHORIZED_OFFICER_SIGNATURE}}" alt="Authorized Officer Signature" />
+          </div>
+    // Signature capture functionality
+    const canvases = {};
+    const contexts = {};
+    let isDrawing = false;
+    let lastX = 0;

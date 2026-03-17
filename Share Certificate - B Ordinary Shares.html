@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Share Certificate - B Ordinary</title>
+<style>
+  :root { --brand:#111; --muted:#555; --border:#ddd; }
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: var(--brand); margin: 40px; }
+  .wrap { max-width: 800px; margin: 0 auto; }
+  .logo-placeholder { width: 120px; height: 60px; border: 2px dashed #ccc; display: flex; align-items: center; justify-content: center; color: #999; font-size: 11px; margin-bottom: 12px; border-radius: 4px; }
+  h1, h2, h3 { margin: 0 0 8px 0; }
+  h1 { font-size: 20px; letter-spacing: 0.4px; }
+  .meta { margin: 16px 0 24px 0; color: var(--muted); font-size: 14px; }
+  .box { padding: 18px; border: 1px solid var(--border); border-radius: 6px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; margin-top: 12px; }
+  .label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .value { font-size: 16px; }
+  .para { margin: 16px 0; line-height: 1.45; }
+  .sign { margin-top: 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  .signature-canvas { border: 1px solid var(--border); border-radius: 4px; background: #fafafa; cursor: crosshair; width: 100%; max-width: 340px; }
+  .signature-buttons { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .signature-buttons button { padding: 6px 12px; font-size: 13px; border: 1px solid var(--border); background: white; border-radius: 4px; cursor: pointer; }
+  .signature-buttons button:hover { background: #f5f5f5; }
+  .line { margin-top: 36px; border-bottom: 1px solid var(--border); width: 100%; }
+  .small { font-size: 12px; color: var(--muted); }
+  @media print { body { margin: 24mm; } .wrap { max-width: none; } .signature-buttons { display: none; } .signature-canvas { border: none; background: white; } }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <img src="{{COMPANY_LOGO_URL}}" alt="Company Logo" style="max-width: 120px; max-height: 60px; margin-bottom: 12px;" />
+    <h1><strong>{{COMPANY_NAME}}</strong></h1>
+    <div class="meta">Company Number: {{COMPANY_NUMBER}}</div>
+
+    <h2>Share Certificate</h2>
+    <div class="meta">Certificate Number: SC-{{YEAR}}-{{SEQUENCE}}</div>
+
+    <div class="box">
+      <p class="para">This is to certify that <strong>{{HOLDER_FULL_NAME}}</strong> is the registered holder of the shares described below.</p>
+
+      <div class="grid">
+        <div>
+          <div class="label">Share Class</div>
+          <div class="value"><strong>B Ordinary</strong></div>
+        </div>
+        <div>
+          <div class="label">Shares Owned</div>
+          <div class="value"><strong>{{NUMBER_OF_SHARES}}</strong></div>
+        </div>
+        <div>
+          <div class="label">Issue Date</div>
+          <div class="value"><strong>{{ISSUE_DATE_DD_MON_YYYY}}</strong></div>
+        </div>
+        <div>
+          <div class="label">Share Numbers</div>
+          <div class="value"><strong>{{FROM_TO_NUMBERS}}</strong></div>
+        </div>
+      </div>
+
+      <p class="para">The shares are fully paid and rank in accordance with the rights set out in the Company’s Articles of Association. This certificate is issued in accordance with the Companies Act 2006 and the said Articles.</p>
+
+      <p class="para small">Registered office: {{REGISTERED_OFFICE_ADDRESS}}</p>
+
+      <div class="sign">
+        <div>
+          <canvas id="directorSignature" class="signature-canvas" width="340" height="80"></canvas>
+          <div class="signature-buttons">
+            <button onclick="clearSignature('directorSignature')">Clear</button>
+            <button onclick="saveSignature('directorSignature', 'director')">Save</button>
+          </div>
+          <div style="margin-top: 8px;"><strong>{{DIRECTOR_NAME}}</strong></div>
+          <div>Director</div>
+          <div class="small">Date: {{SIGN_DATE}}</div>
+        </div>
+        <div>
+          <canvas id="officerSignature" class="signature-canvas" width="340" height="80"></canvas>
+          <div class="signature-buttons">
+            <button onclick="clearSignature('officerSignature')">Clear</button>
+            <button onclick="saveSignature('officerSignature', 'officer')">Save</button>
+            <button onclick="useDirectorSignature()">Use Director</button>
+          </div>
+          <div style="margin-top: 8px;"><strong>{{DIRECTOR_NAME}}</strong></div>
+          <div>Authorised Signatory</div>
+          <div class="small">Date: {{SIGN_DATE}}</div>
+        </div>
+      </div>
+
+      <p class="para small">Keep this certificate with the Company's statutory records.</p>
+    </div>
+  </div>
+  
+  <script>
+    const canvases = {};
+    const contexts = {};
+    let isDrawing = false;
+    let lastX = 0;
+    let lastY = 0;
+    
+    function initCanvas(canvasId) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+      canvases[canvasId] = canvas;
+      contexts[canvasId] = canvas.getContext('2d');
+      const ctx = contexts[canvasId];
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      canvas.addEventListener('mousedown', startDrawing);
+      canvas.addEventListener('mousemove', draw);
+      canvas.addEventListener('mouseup', stopDrawing);
+      canvas.addEventListener('mouseout', stopDrawing);
+      canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+      canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+      canvas.addEventListener('touchend', stopDrawing);
+    }
+    
+    function startDrawing(e) {
+      isDrawing = true;
+      const rect = e.target.getBoundingClientRect();
+      lastX = e.clientX - rect.left;
+      lastY = e.clientY - rect.top;
+    }
+    
+    function draw(e) {
+      if (!isDrawing) return;
+      const canvas = e.target;
+      const ctx = contexts[canvas.id];
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      lastX = x;
+      lastY = y;
+    }
+    
+    function stopDrawing() { isDrawing = false; }
+    
+    function handleTouchStart(e) {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const rect = e.target.getBoundingClientRect();
+      isDrawing = true;
+      lastX = touch.clientX - rect.left;
+      lastY = touch.clientY - rect.top;
+    }
+    
+    function handleTouchMove(e) {
+      e.preventDefault();
+      if (!isDrawing) return;
+      const touch = e.touches[0];
+      const canvas = e.target;
+      const ctx = contexts[canvas.id];
+      const rect = canvas.getBoundingClientRect();
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      lastX = x;
+      lastY = y;
+    }
+    
+    function clearSignature(canvasId) {
+      const canvas = canvases[canvasId];
+      const ctx = contexts[canvasId];
+      if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    function saveSignature(canvasId, type) {
+      const canvas = canvases[canvasId];
+      if (canvas) {
+        const dataUrl = canvas.toDataURL('image/png');
+        localStorage.setItem(`signature_${type}`, dataUrl);
+        alert(`${type.charAt(0).toUpperCase() + type.slice(1)} signature saved!`);
+      }
+    }
+    
+    function useDirectorSignature() {
+      const directorSig = localStorage.getItem('signature_director');
+      if (!directorSig) {
+        alert('Please create a director signature first!');
+        return;
+      }
+      const canvas = canvases['officerSignature'];
+      const ctx = contexts['officerSignature'];
+      const img = new Image();
+      img.onload = function() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+      };
+      img.src = directorSig;
+    }
+    
+    function loadSignatures() {
+      ['director', 'officer'].forEach(type => {
+        const sig = localStorage.getItem(`signature_${type}`);
+        if (sig) {
+          const canvasId = type === 'director' ? 'directorSignature' : 'officerSignature';
+          const canvas = canvases[canvasId];
+          const ctx = contexts[canvasId];
+          const img = new Image();
+          img.onload = function() { ctx.drawImage(img, 0, 0); };
+          img.src = sig;
+        }
+      });
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+      initCanvas('directorSignature');
+      initCanvas('officerSignature');
+      loadSignatures();
+    });
+  </script>
+</body>
+</html>
