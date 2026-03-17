@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, lazy, Suspense } from 'react';
 import {
     getInvoices,
     getExpenses,
@@ -11,6 +11,10 @@ import {
     getVatReturns,
 } from '../services/apiService';
 import { useToast } from '../hooks/useToast';
+
+const ProfitAndLoss = lazy(() => import('./ProfitAndLoss'));
+const BalanceSheet  = lazy(() => import('./BalanceSheet'));
+const AgedDebtors   = lazy(() => import('./AgedDebtors'));
 
 // --- Helpers ---
 
@@ -198,9 +202,9 @@ function buildAvailableYears(settings) {
 }
 
 // ============================================================
-// Main Component
+// CT Report Component (existing)
 // ============================================================
-export default function Reports() {
+function CTReport() {
     const { toast, showToast } = useToast();
 
     const [loading, setLoading]                   = useState(true);
@@ -977,7 +981,7 @@ ${computation.quarters.map(q => `
     }
 
     return (
-        <div style={{ padding: '1.5rem', maxWidth: 1100, margin: '0 auto' }}>
+        <div>
 
             {/* Toast */}
             {toast && (
@@ -1535,6 +1539,73 @@ ${computation.quarters.map(q => `
                     </div>
                 </>
             )}
+        </div>
+    );
+}
+
+// ============================================================
+// Tabbed Reports Wrapper (default export)
+// ============================================================
+const TABS = [
+    { key: 'ct',       label: '🏛️ CT Report',       icon: '🏛️' },
+    { key: 'pnl',      label: '📊 Profit & Loss',    icon: '📊' },
+    { key: 'bs',       label: '🏦 Balance Sheet',    icon: '🏦' },
+    { key: 'debtors',  label: '⏰ Aged Debtors',     icon: '⏰' },
+];
+
+export default function Reports() {
+    const [activeTab, setActiveTab] = useState('ct');
+
+    return (
+        <div style={{ padding: '1.5rem', maxWidth: 1100, margin: '0 auto' }}>
+            {/* Tab Bar */}
+            <div style={{
+                display: 'flex', gap: '0.25rem', marginBottom: '1.5rem',
+                borderBottom: '2px solid #e5e7eb', paddingBottom: 0,
+                overflowX: 'auto',
+            }}>
+                {TABS.map(tab => {
+                    const active = activeTab === tab.key;
+                    return (
+                        <button
+                            key={tab.key}
+                            onClick={() => setActiveTab(tab.key)}
+                            style={{
+                                padding: '0.65rem 1.25rem',
+                                border: 'none',
+                                borderBottom: active ? '3px solid #3b82f6' : '3px solid transparent',
+                                background: active ? '#eff6ff' : 'transparent',
+                                color: active ? '#1d4ed8' : '#6b7280',
+                                fontWeight: active ? 700 : 500,
+                                fontSize: '0.9rem',
+                                cursor: 'pointer',
+                                borderRadius: '8px 8px 0 0',
+                                transition: 'all 0.15s ease',
+                                whiteSpace: 'nowrap',
+                            }}
+                            onMouseEnter={e => { if (!active) e.target.style.background = '#f3f4f6'; }}
+                            onMouseLeave={e => { if (!active) e.target.style.background = 'transparent'; }}
+                        >
+                            {tab.label}
+                        </button>
+                    );
+                })}
+            </div>
+
+            {/* Tab Content */}
+            <Suspense fallback={
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '40vh' }}>
+                    <div style={{ textAlign: 'center', color: '#6b7280' }}>
+                        <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⏳</div>
+                        <p>Loading report…</p>
+                    </div>
+                </div>
+            }>
+                {activeTab === 'ct'      && <CTReport />}
+                {activeTab === 'pnl'     && <ProfitAndLoss />}
+                {activeTab === 'bs'      && <BalanceSheet />}
+                {activeTab === 'debtors' && <AgedDebtors />}
+            </Suspense>
         </div>
     );
 }

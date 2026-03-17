@@ -571,6 +571,13 @@ namespace FinanceHubFunctions.Data
             _context = context;
         }
 
+        public async Task<IEnumerable<CompanyLedgerEntry>> GetAllAsync()
+        {
+            return await _context.CompanyLedger
+                .OrderBy(e => e.EffectiveDate)
+                .ToListAsync();
+        }
+
         public async Task<IEnumerable<CompanyLedgerEntry>> GetByPeriodAsync(string periodKey)
         {
             return await _context.CompanyLedger

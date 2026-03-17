@@ -92,6 +92,7 @@ namespace FinanceHubFunctions.Data
 
     public interface ICompanyLedgerRepository
     {
+        Task<IEnumerable<CompanyLedgerEntry>> GetAllAsync();
         Task<IEnumerable<CompanyLedgerEntry>> GetByPeriodAsync(string periodKey);
         Task<IEnumerable<CompanyLedgerEntry>> GetByTaxYearAsync(int taxYear);
         Task<CompanyLedgerEntry?> GetByIdAsync(int id);

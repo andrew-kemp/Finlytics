@@ -2380,6 +2380,57 @@ export async function getMonzoBalance() {
     return response.json();
 }
 
+// ═══════════════════════════════════════════════════════════
+//  REPORTS
+// ═══════════════════════════════════════════════════════════
+
+export async function getProfitAndLoss(financialYear) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/reports/profit-and-loss/${encodeURIComponent(financialYear)}`, { headers });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to fetch Profit & Loss report');
+    }
+    return response.json();
+}
+
+export async function getBalanceSheet(financialYear) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/reports/balance-sheet/${encodeURIComponent(financialYear)}`, { headers });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to fetch Balance Sheet');
+    }
+    return response.json();
+}
+
+export async function getAgedDebtors() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/reports/aged-debtors`, { headers });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to fetch Aged Debtors report');
+    }
+    return response.json();
+}
+
+export async function getAuditTrail(params = {}) {
+    const headers = await getAuthHeaders();
+    const query = new URLSearchParams();
+    if (params.entityType) query.append('entityType', params.entityType);
+    if (params.action) query.append('action', params.action);
+    if (params.from) query.append('from', params.from);
+    if (params.to) query.append('to', params.to);
+    if (params.limit) query.append('limit', params.limit);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const response = await fetch(`${API_BASE}/reports/audit-trail${qs}`, { headers });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to fetch Audit Trail');
+    }
+    return response.json();
+}
+
 export async function syncMonzoTransactions(since = null) {
     const headers = await getAuthHeaders();
     const body = since ? JSON.stringify({ since }) : null;
