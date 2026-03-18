@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getEmployees, createEmployee, updateEmployee, getNextEmployeeNumber } from '../services/apiService';
+import { getEmployees, createEmployee, updateEmployee, getNextEmployeeNumber, inviteTeamMember, getTeamMembers } from '../services/apiService';
 import Toast from './Toast';
 import { useToast } from '../hooks/useToast';
 
@@ -14,11 +14,13 @@ export default function Employees() {
   const [processingMessage, setProcessingMessage] = useState('');
   const [activeTab, setActiveTab] = useState(0);
   const [viewingEmployee, setViewingEmployee] = useState(null);
+  const [inviteStatus, setInviteStatus] = useState({}); // { employeeId: 'Invited'|'Active' }
   const { toast, showToast, clearToast } = useToast();
   const [formData, setFormData] = useState({
     employeeNumber: '',
     name: '',
     email: '',
+    personalEmail: '',
     nationalInsuranceNumber: '',
     taxCode: '1257L',
     niCategory: 'A',
@@ -37,6 +39,7 @@ export default function Employees() {
 
   useEffect(() => {
     loadEmployees();
+    loadTeamStatus();
   }, []);
 
   const loadEmployees = async () => {
@@ -48,6 +51,64 @@ export default function Employees() {
       showToast('Failed to load employees', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadTeamStatus = async () => {
+    try {
+      const members = await getTeamMembers();
+      const statusMap = {};
+      members.forEach(m => {
+        if (m.employeeId) statusMap[m.employeeId] = m.status;
+        // Also match by email
+        statusMap[`email:${m.email?.toLowerCase()}`] = m.status;
+      });
+      setInviteStatus(statusMap);
+    } catch (error) {
+      console.error('Error loading team status:', error);
+    }
+  };
+
+  const getEmployeeInviteStatus = (employee) => {
+    if (inviteStatus[employee.id]) return inviteStatus[employee.id];
+    if (employee.email && inviteStatus[`email:${employee.email.toLowerCase()}`])
+      return inviteStatus[`email:${employee.email.toLowerCase()}`];
+    if (employee.personalEmail && inviteStatus[`email:${employee.personalEmail.toLowerCase()}`])
+      return inviteStatus[`email:${employee.personalEmail.toLowerCase()}`];
+    return null;
+  };
+
+  const handleInviteToExpenses = async (employee) => {
+    if (!employee.email) {
+      showToast('Employee must have a business email address to invite', 'error');
+      return;
+    }
+    if (!confirm(`Invite ${employee.name} to the Expense Portal?\n\nInvite will be sent to: ${employee.email}\nThey can sign up using either their business or personal email.`)) return;
+
+    setProcessingMessage('Sending invitation...');
+    setProcessing(true);
+    try {
+      const result = await inviteTeamMember({
+        email: employee.email,
+        displayName: employee.name,
+        role: employee.isDirector ? 'Admin' : 'Employee',
+        invitedBy: 'admin'
+      });
+      showToast(`Invitation sent to ${employee.name}! Invite URL copied to clipboard.`, 'success');
+      // Copy invite URL to clipboard
+      if (result.inviteUrl) {
+        try { await navigator.clipboard.writeText(result.inviteUrl); } catch { }
+      }
+      await loadTeamStatus();
+      setViewingEmployee(null);
+    } catch (error) {
+      console.error('Error inviting employee:', error);
+      const msg = error.message.includes('already been invited')
+        ? `${employee.name} has already been invited to the expense portal`
+        : `Failed to invite employee: ${error.message}`;
+      showToast(msg, 'error');
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -65,6 +126,7 @@ export default function Employees() {
       employeeNumber: '',
       name: '',
       email: '',
+      personalEmail: '',
       nationalInsuranceNumber: '',
       taxCode: '1257L',
       niCategory: 'A',
@@ -96,6 +158,7 @@ export default function Employees() {
       employeeNumber: employee.employeeNumber || '',
       name: employee.name || '',
       email: employee.email || '',
+      personalEmail: employee.personalEmail || '',
       nationalInsuranceNumber: employee.nationalInsuranceNumber || '',
       taxCode: employee.taxCode || '1257L',
       niCategory: employee.niCategory || 'A',
@@ -124,6 +187,7 @@ export default function Employees() {
       employeeNumber: '',
       name: '',
       email: '',
+      personalEmail: '',
       nationalInsuranceNumber: '',
       taxCode: '1257L',
       niCategory: 'A',
@@ -288,8 +352,19 @@ export default function Employees() {
                         <label>Email <span style={{ color: '#dc2626' }}>*</span></label>
                         <input type="email" value={formData.email} required
                           onChange={e => setFormData({ ...formData, email: e.target.value })}
-                          placeholder="jane@example.com" />
+                          placeholder="jane@company.com" />
+                        <small style={{ color: '#6b7280' }}>Business email</small>
                       </div>
+                      <div className="form-group">
+                        <label>Personal Email</label>
+                        <input type="email" value={formData.personalEmail}
+                          onChange={e => setFormData({ ...formData, personalEmail: e.target.value })}
+                          placeholder="jane@gmail.com" />
+                        <small style={{ color: '#6b7280' }}>For expense portal sign-up</small>
+                      </div>
+                    </div>
+
+                    <div className="form-row">
                       <div className="form-group">
                         <label>Phone Number</label>
                         <input type="tel" value={formData.phoneNumber}
@@ -561,6 +636,8 @@ export default function Employees() {
                               fontSize: '0.88em' }}>
                   <div><span style={{ color: '#9ca3af' }}>Email</span><br/>
                     <strong>{viewingEmployee.email || '—'}</strong></div>
+                  <div><span style={{ color: '#9ca3af' }}>Personal Email</span><br/>
+                    <strong>{viewingEmployee.personalEmail || '—'}</strong></div>
                   <div><span style={{ color: '#9ca3af' }}>Phone</span><br/>
                     <strong>{viewingEmployee.phoneNumber || '—'}</strong></div>
                   <div><span style={{ color: '#9ca3af' }}>Start Date</span><br/>
@@ -639,16 +716,37 @@ export default function Employees() {
 
             <div className="modal-footer" style={{ borderTop: '1px solid #e5e7eb',
                                                     padding: '0.875rem 1.25rem',
-                                                    display: 'flex', justifyContent: 'space-between' }}>
-              <button className="btn-secondary"
-                onClick={() => { handleToggleActive(viewingEmployee); setViewingEmployee(null); }}
-                style={{ color: viewingEmployee.isActive ? '#dc2626' : '#16a34a', borderColor: viewingEmployee.isActive ? '#fca5a5' : '#86efac' }}>
-                {viewingEmployee.isActive ? '🔴 Deactivate' : '✅ Reactivate'}
-              </button>
-              <button className="btn-primary"
-                onClick={() => { setViewingEmployee(null); handleEdit(viewingEmployee); }}>
-                ✏️ Edit Employee
-              </button>
+                                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button className="btn-secondary"
+                  onClick={() => { handleToggleActive(viewingEmployee); setViewingEmployee(null); }}
+                  style={{ color: viewingEmployee.isActive ? '#dc2626' : '#16a34a', borderColor: viewingEmployee.isActive ? '#fca5a5' : '#86efac' }}>
+                  {viewingEmployee.isActive ? '🔴 Deactivate' : '✅ Reactivate'}
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {viewingEmployee.isActive && !getEmployeeInviteStatus(viewingEmployee) && (
+                  <button className="btn-secondary"
+                    onClick={() => handleInviteToExpenses(viewingEmployee)}
+                    style={{ color: '#7c3aed', borderColor: '#c4b5fd' }}>
+                    📧 Invite to Expenses
+                  </button>
+                )}
+                {getEmployeeInviteStatus(viewingEmployee) && (
+                  <span style={{
+                    padding: '0.4rem 0.75rem', fontSize: '0.82em', borderRadius: '0.375rem',
+                    background: getEmployeeInviteStatus(viewingEmployee) === 'Active' ? '#dcfce7' : '#fef9c3',
+                    color: getEmployeeInviteStatus(viewingEmployee) === 'Active' ? '#166534' : '#854d0e',
+                    display: 'flex', alignItems: 'center', fontWeight: 500
+                  }}>
+                    {getEmployeeInviteStatus(viewingEmployee) === 'Active' ? '✅ On Expense Portal' : '⏳ Invite Pending'}
+                  </span>
+                )}
+                <button className="btn-primary"
+                  onClick={() => { setViewingEmployee(null); handleEdit(viewingEmployee); }}>
+                  ✏️ Edit Employee
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -697,6 +795,16 @@ export default function Employees() {
                       <span className={`status-badge ${employee.isActive ? 'status-paid' : 'status-draft'}`}>
                         {employee.isActive ? 'Active' : 'Inactive'}
                       </span>
+                      {getEmployeeInviteStatus(employee) && (
+                        <span style={{
+                          marginLeft: '0.3rem', fontSize: '0.7em', padding: '0.1rem 0.35rem',
+                          borderRadius: '0.2rem', verticalAlign: 'middle',
+                          background: getEmployeeInviteStatus(employee) === 'Active' ? '#dcfce7' : '#fef9c3',
+                          color: getEmployeeInviteStatus(employee) === 'Active' ? '#166534' : '#854d0e'
+                        }}>
+                          {getEmployeeInviteStatus(employee) === 'Active' ? '📱' : '📧'}
+                        </span>
+                      )}
                     </td>
                     <td onClick={e => e.stopPropagation()}>
                       <button

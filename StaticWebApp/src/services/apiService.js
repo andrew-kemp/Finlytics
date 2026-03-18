@@ -956,6 +956,76 @@ export async function getEmployees() {
     return response.json();
 }
 
+// ─── Team Management / Employee Expense Portal ───────────────
+export async function inviteTeamMember(data) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/team/invite`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(data)
+    });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Failed to send invite' }));
+        throw new Error(err.error || 'Failed to send invite');
+    }
+    return response.json();
+}
+
+export async function getTeamMembers() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/team/members`, { headers });
+    if (!response.ok) throw new Error('Failed to load team members');
+    return response.json();
+}
+
+export async function updateTeamMember(id, updates) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/team/members/${id}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(updates)
+    });
+    if (!response.ok) throw new Error('Failed to update team member');
+    return response.json();
+}
+
+export async function deleteTeamMember(id) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/team/members/${id}`, {
+        method: 'DELETE',
+        headers
+    });
+    if (!response.ok) throw new Error('Failed to remove team member');
+}
+
+export async function getTeamApprovals() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/team/approvals`, { headers });
+    if (!response.ok) throw new Error('Failed to load approvals');
+    return response.json();
+}
+
+export async function approveItem(type, id) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/team/approvals/${type}/${id}/approve`, {
+        method: 'POST',
+        headers
+    });
+    if (!response.ok) throw new Error(`Failed to approve ${type}`);
+    return response.json();
+}
+
+export async function rejectItem(type, id, reason) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/team/approvals/${type}/${id}/reject`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ reason })
+    });
+    if (!response.ok) throw new Error(`Failed to reject ${type}`);
+    return response.json();
+}
+
     export async function getNextEmployeeNumber() {
         const headers = await getAuthHeaders();
         const response = await fetch(`${API_BASE}/employees/next-number`, { headers });

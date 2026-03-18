@@ -31,6 +31,7 @@ const MileageTrips  = lazy(() => import('./components/MileageTrips'));
 const P11D          = lazy(() => import('./components/P11D'));
 const Dividends     = lazy(() => import('./components/Dividends'));
 const CreditNotes   = lazy(() => import('./components/CreditNotes'));
+const TeamManagement = lazy(() => import('./components/TeamManagement'));
 
 const API_BASE = 'https://financehub-func-kemponline.azurewebsites.net/api';
 
@@ -300,6 +301,9 @@ function MainContent() {
                     <li onClick={() => handleNavigate('companyledger')} className={view === 'companyledger' ? 'active' : ''}>
                         📒 Company Ledger
                     </li>
+                    <li onClick={() => handleNavigate('team')} className={view === 'team' ? 'active' : ''}>
+                        👥 Team / Expenses
+                    </li>
 
                     <li className="nav-group-label">Assets &amp; Reporting</li>
                     <li onClick={() => handleNavigate('assets')} className={view === 'assets' ? 'active' : ''}>
@@ -417,6 +421,7 @@ function MainContent() {
                 {view === 'companyledger' && <CompanyLedger />}
                 {view === 'shareholders' && <Shareholders />}
                 {view === 'employees' && <Employees />}
+                {view === 'team' && <TeamManagement />}
                 {view === 'payroll' && <Payroll />}
                 {view === 'p11d' && <P11D />}
                 {view === 'dividends' && <Dividends />}
