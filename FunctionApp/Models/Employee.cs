@@ -6,6 +6,7 @@ namespace FinanceHubFunctions.Models
         public string? EmployeeNumber { get; set; }
         public string? Name { get; set; }
         public string? Email { get; set; }
+        public string? PersonalEmail { get; set; }
         public string? NationalInsuranceNumber { get; set; }
         public string? TaxCode { get; set; }
         public decimal? AnnualSalary { get; set; }

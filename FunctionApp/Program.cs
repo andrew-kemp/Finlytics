@@ -117,6 +117,7 @@ var host = new HostBuilder()
             services.AddScoped<IMissingReceiptDeclarationRepository, MissingReceiptDeclarationRepository>();
             services.AddScoped<IExpenseAuditEventRepository, ExpenseAuditEventRepository>();
             services.AddScoped<ICreditNoteRepository, CreditNoteRepository>();
+            services.AddScoped<ITeamMemberRepository, TeamMemberRepository>();
         }
         else
         {
@@ -134,6 +135,7 @@ var host = new HostBuilder()
                 services.AddScoped<EpsService>();
         services.AddScoped<MissingReceiptDeclarationPdfService>();
         services.AddScoped<CreditNotePdfService>();
+        services.AddSingleton<ClerkAuthService>();
         var storageConnectionString = context.Configuration["AzureWebJobsStorage"];
         if (!string.IsNullOrEmpty(storageConnectionString))
         {

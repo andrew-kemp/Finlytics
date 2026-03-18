@@ -1,0 +1,13 @@
+{
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/assets/*", "/favicon-32.png", "/icon-192.png", "/icon-512.png", "/manifest.json"]
+  },
+  "globalHeaders": {
+    "Cache-Control": "no-cache, no-store, must-revalidate"
+  },
+  "responseOverrides": {
+    "401": { "rewrite": "/index.html", "statusCode": 200 },
+    "404": { "rewrite": "/index.html", "statusCode": 200 }
+  }
+}

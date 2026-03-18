@@ -43,6 +43,7 @@ namespace FinanceHubFunctions.Data
         public DbSet<MissingReceiptDeclaration> MissingReceiptDeclarations { get; set; }
         public DbSet<ExpenseAuditEvent> ExpenseAuditEvents { get; set; }
         public DbSet<CreditNote> CreditNotes { get; set; }
+        public DbSet<TeamMember> TeamMembers { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -786,6 +787,23 @@ namespace FinanceHubFunctions.Data
                 entity.HasIndex(e => e.CreditNoteNumber).IsUnique();
                 entity.HasIndex(e => e.CustomerId);
                 entity.HasIndex(e => e.Status);
+            });
+
+            // TeamMembers
+            modelBuilder.Entity<TeamMember>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Email).IsRequired().HasMaxLength(256);
+                entity.Property(e => e.ClerkUserId).HasMaxLength(200);
+                entity.Property(e => e.DisplayName).HasMaxLength(200);
+                entity.Property(e => e.Role).IsRequired().HasMaxLength(50).HasDefaultValue("Employee");
+                entity.Property(e => e.Status).IsRequired().HasMaxLength(50).HasDefaultValue("Invited");
+                entity.Property(e => e.InviteToken).HasMaxLength(200);
+                entity.Property(e => e.InvitedBy).HasMaxLength(200);
+                entity.HasIndex(e => e.ClerkUserId);
+                entity.HasIndex(e => e.CompanyId);
+                entity.HasIndex(e => e.InviteToken);
+                entity.HasIndex(e => new { e.Email, e.CompanyId }).IsUnique();
             });
         }
     }

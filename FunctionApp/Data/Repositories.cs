@@ -1691,4 +1691,52 @@ namespace FinanceHubFunctions.Data
             return $"{prefix}{next:D3}";
         }
     }
+
+    public class TeamMemberRepository : ITeamMemberRepository
+    {
+        private readonly FinanceHubDbContext _context;
+        public TeamMemberRepository(FinanceHubDbContext context) => _context = context;
+
+        public async Task<IEnumerable<TeamMember>> GetAllAsync()
+            => await _context.TeamMembers.ToListAsync();
+
+        public async Task<IEnumerable<TeamMember>> GetByCompanyIdAsync(int companyId)
+            => await _context.TeamMembers.Where(m => m.CompanyId == companyId).ToListAsync();
+
+        public async Task<TeamMember?> GetByIdAsync(int id)
+            => await _context.TeamMembers.FindAsync(id);
+
+        public async Task<TeamMember?> GetByClerkUserIdAsync(string clerkUserId)
+            => await _context.TeamMembers.FirstOrDefaultAsync(m => m.ClerkUserId == clerkUserId);
+
+        public async Task<TeamMember?> GetByEmailAndCompanyAsync(string email, int companyId)
+            => await _context.TeamMembers.FirstOrDefaultAsync(m => m.Email == email && m.CompanyId == companyId);
+
+        public async Task<TeamMember?> GetByInviteTokenAsync(string token)
+            => await _context.TeamMembers.FirstOrDefaultAsync(m => m.InviteToken == token);
+
+        public async Task<TeamMember> CreateAsync(TeamMember member)
+        {
+            _context.TeamMembers.Add(member);
+            await _context.SaveChangesAsync();
+            return member;
+        }
+
+        public async Task<TeamMember> UpdateAsync(TeamMember member)
+        {
+            _context.TeamMembers.Update(member);
+            await _context.SaveChangesAsync();
+            return member;
+        }
+
+        public async Task DeleteAsync(int id)
+        {
+            var member = await _context.TeamMembers.FindAsync(id);
+            if (member != null)
+            {
+                _context.TeamMembers.Remove(member);
+                await _context.SaveChangesAsync();
+            }
+        }
+    }
 }

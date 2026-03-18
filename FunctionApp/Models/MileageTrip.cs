@@ -27,5 +27,13 @@ namespace FinanceHubFunctions.Models
         public string? Notes { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
+
+        // Employee portal — approval workflow
+        public int? SubmittedByTeamMemberId { get; set; }
+        public string? ApprovalStatus { get; set; } = "NotRequired"; // NotRequired | Draft | Submitted | Approved | Rejected
+        public int? ApprovedByTeamMemberId { get; set; }
+        public DateTime? ApprovedAt { get; set; }
+        public string? RejectionReason { get; set; }
+        public DateTime? SubmittedAt { get; set; }
     }
 }

@@ -282,4 +282,17 @@ namespace FinanceHubFunctions.Data
         Task DeleteAsync(int id);
         Task<string> GenerateNextCreditNoteNumberAsync();
     }
+
+    public interface ITeamMemberRepository
+    {
+        Task<IEnumerable<TeamMember>> GetAllAsync();
+        Task<IEnumerable<TeamMember>> GetByCompanyIdAsync(int companyId);
+        Task<TeamMember?> GetByIdAsync(int id);
+        Task<TeamMember?> GetByClerkUserIdAsync(string clerkUserId);
+        Task<TeamMember?> GetByEmailAndCompanyAsync(string email, int companyId);
+        Task<TeamMember?> GetByInviteTokenAsync(string token);
+        Task<TeamMember> CreateAsync(TeamMember member);
+        Task<TeamMember> UpdateAsync(TeamMember member);
+        Task DeleteAsync(int id);
+    }
 }

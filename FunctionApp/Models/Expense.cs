@@ -38,5 +38,13 @@ namespace FinanceHubFunctions.Models
         public bool HasMissingReceiptDeclaration { get; set; } = false;
         public string? MissingReceiptDeclarationRef { get; set; } // e.g. MRD-20260315-001
         public string? NoReceiptReason { get; set; }
+
+        // Employee portal — approval workflow
+        public int? SubmittedByTeamMemberId { get; set; }
+        public string? ApprovalStatus { get; set; } = "NotRequired"; // NotRequired | Draft | Submitted | Approved | Rejected
+        public int? ApprovedByTeamMemberId { get; set; }
+        public DateTime? ApprovedAt { get; set; }
+        public string? RejectionReason { get; set; }
+        public DateTime? SubmittedAt { get; set; }
     }
 }
