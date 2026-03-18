@@ -24,6 +24,7 @@ namespace FinanceHubFunctions.Functions
         private readonly IExpenseRepository _expenseRepo;
         private readonly IMileageTripRepository _mileageRepo;
         private readonly IEmployeeRepository _employeeRepo;
+        private readonly ICompanySettingsRepository _companySettingsRepo;
         private readonly BlobStorageService? _blobService;
 
         public EmployeePortalFunctions(
@@ -32,6 +33,7 @@ namespace FinanceHubFunctions.Functions
             IExpenseRepository expenseRepo,
             IMileageTripRepository mileageRepo,
             IEmployeeRepository employeeRepo,
+            ICompanySettingsRepository companySettingsRepo,
             BlobStorageService? blobService = null)
         {
             _clerkAuth = clerkAuth;
@@ -39,6 +41,7 @@ namespace FinanceHubFunctions.Functions
             _expenseRepo = expenseRepo;
             _mileageRepo = mileageRepo;
             _employeeRepo = employeeRepo;
+            _companySettingsRepo = companySettingsRepo;
             _blobService = blobService;
         }
 
@@ -551,6 +554,9 @@ namespace FinanceHubFunctions.Functions
 
             await _teamMemberRepo.UpdateAsync(member);
 
+            // Get company name for the welcome message
+            var companySettings = await _companySettingsRepo.GetDefaultAsync();
+
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(new
             {
@@ -559,7 +565,8 @@ namespace FinanceHubFunctions.Functions
                 member.Email,
                 member.DisplayName,
                 member.Role,
-                member.CompanyId
+                member.CompanyId,
+                companyName = companySettings?.CompanyName ?? "your company"
             });
             return response;
         }

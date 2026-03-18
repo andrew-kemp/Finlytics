@@ -24,7 +24,7 @@ export default function AcceptInvite() {
     async function accept() {
       setStatus('accepting')
       try {
-        const result = await acceptInvite(getToken, token)
+        const result = await acceptInvite(token, getToken)
         setStatus('success')
         setCompany(result.companyName || 'your company')
       } catch (err) {

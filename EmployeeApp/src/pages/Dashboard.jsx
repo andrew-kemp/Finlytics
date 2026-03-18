@@ -12,19 +12,21 @@ export default function Dashboard() {
   useEffect(() => {
     async function load() {
       try {
-        const [prof, expenses, mileage, tracker] = await Promise.all([
+        const [prof, expensesRaw, mileageRaw, tracker] = await Promise.all([
           getProfile(getToken),
-          getExpenses(getToken),
-          getMileage(getToken),
-          getMileageTracker(getToken),
+          getExpenses(getToken).catch(() => []),
+          getMileage(getToken).catch(() => []),
+          getMileageTracker(getToken).catch(() => null),
         ])
+        const expenses = Array.isArray(expensesRaw) ? expensesRaw : []
+        const mileage = Array.isArray(mileageRaw) ? mileageRaw : []
         setProfile(prof)
         setStats({
-          totalExpenses: expenses?.length || 0,
-          pendingExpenses: expenses?.filter(e => e.approvalStatus === 'Submitted')?.length || 0,
-          approvedExpenses: expenses?.filter(e => e.approvalStatus === 'Approved')?.length || 0,
-          rejectedExpenses: expenses?.filter(e => e.approvalStatus === 'Rejected')?.length || 0,
-          totalMileageTrips: mileage?.length || 0,
+          totalExpenses: expenses.length,
+          pendingExpenses: expenses.filter(e => e.approvalStatus === 'Submitted').length,
+          approvedExpenses: expenses.filter(e => e.approvalStatus === 'Approved').length,
+          rejectedExpenses: expenses.filter(e => e.approvalStatus === 'Rejected').length,
+          totalMileageTrips: mileage.length,
           mileageTracker: tracker,
         })
       } catch (err) {
