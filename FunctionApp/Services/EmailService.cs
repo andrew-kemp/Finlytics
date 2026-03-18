@@ -102,6 +102,31 @@ namespace FinanceHubFunctions.Services
             return result.Success;
         }
 
+        /// <summary>
+        /// Send an email without requiring an access token — uses DB company settings directly.
+        /// Ideal for system-generated emails (invitations, notifications) where no user session exists.
+        /// </summary>
+        public async Task<(bool Success, string Error)> SendSystemEmailAsync(
+            string toEmail,
+            string subject,
+            string htmlBody,
+            string fromAddressOverride = null)
+        {
+            var result = await SendEmailWithResultAsync(
+                toEmail,
+                subject,
+                htmlBody,
+                accessToken: "",           // DB settings don't need a token
+                attachmentBytes: null,
+                attachmentFileName: null,
+                logoBytes: null,
+                logoContentType: null,
+                logoContentId: null,
+                fromAddressOverride: fromAddressOverride);
+
+            return (result.Success, result.Error);
+        }
+
         private async Task<EmailSendResult> SendEmailWithResultAsync(
             string toEmail,
             string subject,

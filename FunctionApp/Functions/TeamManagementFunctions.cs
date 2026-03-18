@@ -122,17 +122,47 @@ namespace FinanceHubFunctions.Functions
                     {
                         var companyName = companySettings?.CompanyName ?? "Finlytics";
                         var emailBody = $@"
-<h2>You've been invited to {companyName} Expenses</h2>
-<p>Hi {member.DisplayName ?? "there"},</p>
-<p>You've been invited to submit expenses and mileage claims via Finlytics.</p>
-<p><a href='{inviteUrl}' style='display:inline-block;padding:12px 24px;background:#667eea;color:white;text-decoration:none;border-radius:6px;font-weight:600;'>Accept Invitation</a></p>
-<p>Or copy this link: {inviteUrl}</p>
-<p style='color:#666;font-size:12px;'>This invitation was sent by {companyName}.</p>";
+<!DOCTYPE html>
+<html>
+<head><meta charset='utf-8'/></head>
+<body style='font-family:-apple-system,BlinkMacSystemFont,""Segoe UI"",Roboto,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;'>
+  <div style='text-align:center;margin-bottom:24px;'>
+    <h2 style='color:#1a1a2e;margin:0 0 4px;'>You've been invited to {companyName} Expenses</h2>
+    <p style='color:#666;margin:0;font-size:14px;'>Submit expenses and mileage claims online</p>
+  </div>
+  <div style='background:#f8f9fa;border-radius:8px;padding:24px;margin-bottom:24px;'>
+    <p style='margin:0 0 16px;'>Hi {member.DisplayName ?? "there"},</p>
+    <p style='margin:0 0 20px;'>You've been invited to submit expenses and mileage claims via the {companyName} Expense Portal.</p>
+    <div style='text-align:center;margin:24px 0;'>
+      <a href='{inviteUrl}' style='display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;'>Accept Invitation</a>
+    </div>
+    <p style='margin:16px 0 0;font-size:13px;color:#666;'>Or copy this link:<br/>
+      <a href='{inviteUrl}' style='color:#667eea;word-break:break-all;'>{inviteUrl}</a>
+    </p>
+  </div>
+  <p style='color:#999;font-size:12px;text-align:center;margin:0;'>
+    This invitation was sent by {companyName}. If you weren't expecting this, you can safely ignore it.
+  </p>
+</body>
+</html>";
 
-                        // For invite emails we don't have a Graph access token,
-                        // so we'll log the invite URL. Email sending requires Graph token from admin session.
-                        // TODO: Use an app-level SMTP or SendGrid for invite emails
-                        Console.WriteLine($"Invite URL for {member.Email}: {inviteUrl}");
+                        var fromAddress = Environment.GetEnvironmentVariable("INVITE_FROM_EMAIL");
+                        // If no override set, use the company's default SMTP from address
+
+                        var (success, error) = await _emailService.SendSystemEmailAsync(
+                            member.Email,
+                            $"You're invited to {companyName} Expenses",
+                            emailBody,
+                            fromAddressOverride: fromAddress);
+
+                        if (success)
+                        {
+                            Console.WriteLine($"Invite email sent to {member.Email}");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Failed to send invite email to {member.Email}: {error}");
+                        }
                     }
                     catch (Exception emailEx)
                     {
