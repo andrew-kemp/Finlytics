@@ -1,6 +1,19 @@
+
+
 import { useAuth } from '@clerk/react'
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { getProfile, getExpenses, getMileage, getMileageTracker } from '../services/api'
+
+const StatCard = ({ label, value, icon, className = '' }) => (
+  <div className={`stat-card ${className}`}>
+    <div className="stat-icon">{icon}</div>
+    <div className="stat-info">
+      <div className="stat-value">{value}</div>
+      <div className="stat-label">{label}</div>
+    </div>
+  </div>
+);
 
 export default function Dashboard() {
   const { getToken } = useAuth()
@@ -46,60 +59,60 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard">
-      <h1>Welcome, {profile?.displayName || profile?.email || 'there'} 👋</h1>
+      <header className="dashboard-header">
+        <h1>Welcome, {profile?.displayName || profile?.email || 'there'} 👋</h1>
+        <p>Here's a summary of your expenses and mileage activity.</p>
+      </header>
 
-      <div className="stat-grid">
-        <div className="stat-card">
-          <div className="stat-number">{stats.totalExpenses}</div>
-          <div className="stat-label">Total Expenses</div>
-        </div>
-        <div className="stat-card pending">
-          <div className="stat-number">{stats.pendingExpenses}</div>
-          <div className="stat-label">Pending Approval</div>
-        </div>
-        <div className="stat-card approved">
-          <div className="stat-number">{stats.approvedExpenses}</div>
-          <div className="stat-label">Approved</div>
-        </div>
-        <div className="stat-card rejected">
-          <div className="stat-number">{stats.rejectedExpenses}</div>
-          <div className="stat-label">Rejected</div>
-        </div>
+      <div className="quick-actions">
+        <Link to="/expenses?new=true" className="btn-primary">＋ New Expense</Link>
+        <Link to="/mileage?new=true" className="btn-secondary">＋ Add Mileage</Link>
       </div>
 
-      {tracker && (
-        <div className="tracker-card">
-          <h2>🚗 Mileage Allowance {tracker.taxYear}</h2>
-          <div className="tracker-bar-container">
-            <div className="tracker-bar" style={{ width: `${Math.min(pct, 100)}%` }} />
+      <div className="dashboard-grid">
+        <div className="main-content">
+          <h2 className="section-title">💰 Expenses</h2>
+          <div className="stat-grid">
+            <StatCard label="Total Expenses" value={stats.totalExpenses} icon="🧾" />
+            <StatCard label="Pending Approval" value={stats.pendingExpenses} icon="⏳" className="pending" />
+            <StatCard label="Approved" value={stats.approvedExpenses} icon="✅" className="approved" />
+            <StatCard label="Rejected" value={stats.rejectedExpenses} icon="❌" className="rejected" />
           </div>
-          <div className="tracker-stats">
-            <span>{tracker.approvedMiles?.toLocaleString()} of {tracker.threshold?.toLocaleString()} miles</span>
-            <span className="tracker-pct">{pct}%</span>
-          </div>
-          <div className="tracker-details">
-            <div>
-              <strong>At 45p:</strong> {tracker.milesAt45p?.toLocaleString()} miles = £{tracker.amountClaimed?.toFixed(2)}
-            </div>
-            <div>
-              <strong>Remaining at 45p:</strong> {tracker.remainingMilesAt45p?.toLocaleString()} miles (£{tracker.remainingValueAt45p?.toFixed(2)})
-            </div>
-            {tracker.isOver10k && (
-              <div className="rate-warning">⚠️ Over 10,000 miles — rate now 25p/mile</div>
-            )}
-          </div>
-        </div>
-      )}
 
-      <div className="stat-grid" style={{ marginTop: '1rem' }}>
-        <div className="stat-card">
-          <div className="stat-number">{stats.totalMileageTrips}</div>
-          <div className="stat-label">Mileage Trips</div>
+          <h2 className="section-title">🚗 Mileage</h2>
+          <div className="stat-grid">
+            <StatCard label="Mileage Trips" value={stats.totalMileageTrips} icon="🗺️" />
+            <StatCard label="Miles Logged" value={tracker?.totalMilesLogged?.toLocaleString() || 0} icon="📏" />
+          </div>
         </div>
-        <div className="stat-card">
-          <div className="stat-number">{tracker?.totalMilesLogged?.toLocaleString() || 0}</div>
-          <div className="stat-label">Miles Logged</div>
-        </div>
+
+        <aside className="sidebar-content">
+          {tracker && (
+            <div className="tracker-card">
+              <h2 className="section-title">Mileage Allowance {tracker.taxYear}</h2>
+              <div className="tracker-bar-container">
+                <div className="tracker-bar" style={{ width: `${Math.min(pct, 100)}%` }} />
+              </div>
+              <div className="tracker-stats">
+                <span>{tracker.approvedMiles?.toLocaleString()} / {tracker.threshold?.toLocaleString()} mi</span>
+                <span className="tracker-pct">{pct}%</span>
+              </div>
+              <div className="tracker-details">
+                <div className="detail-item">
+                  <span>At 45p ({tracker.milesAt45p?.toLocaleString()} mi)</span>
+                  <strong>£{tracker.amountClaimed?.toFixed(2)}</strong>
+                </div>
+                <div className="detail-item">
+                  <span>Remaining at 45p</span>
+                  <strong>{tracker.remainingMilesAt45p?.toLocaleString()} mi (£{tracker.remainingValueAt45p?.toFixed(2)})</strong>
+                </div>
+                {tracker.isOver10k && (
+                  <div className="rate-warning">⚠️ Over 10,000 miles — rate now 25p/mile</div>
+                )}
+              </div>
+            </div>
+          )}
+        </aside>
       </div>
     </div>
   )
