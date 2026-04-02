@@ -1553,6 +1553,7 @@ const DLA = ({ openNew }) => {
     const filterVatReclaimable = filtered
         .filter(e => e.ctTag !== 'NonCT')
         .reduce((s, e) => s + (e.vatAmount || 0), 0);
+    const vatExcludedEntries = filtered.filter(e => e.ctTag === 'NonCT' && (e.vatAmount || 0) > 0);
     const filterTotalGross = filtered.reduce((s, e) => s + (e.amountGross || 0), 0);
     const filterTotalPaid = filtered.reduce((s, e) => s + (e.amountPaid || 0), 0);
     const filterTotalOutstanding = filtered.reduce((s, e) => s + (e.remainingBalance || 0), 0);
@@ -3323,6 +3324,39 @@ const DLA = ({ openNew }) => {
                 </div>
             </div>
 
+            {/* VAT-excluded items (NonCT) */}
+            {vatExcludedEntries.length > 0 && (
+                <details style={{ marginBottom: '1rem', padding: '0.6rem 0.8rem', background: '#fff8e1', border: '1px solid #ffe0b2', borderRadius: '8px', fontSize: '0.82rem' }}>
+                    <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#e65100' }}>
+                        ⚠️ {vatExcludedEntries.length} item{vatExcludedEntries.length !== 1 ? 's' : ''} excluded from VAT reclaim — {formatCurrency(vatExcludedEntries.reduce((s, e) => s + (e.vatAmount || 0), 0))} VAT not reclaimable
+                    </summary>
+                    <div style={{ fontSize: '0.75rem', color: '#5d4037', margin: '0.4rem 0' }}>
+                        These entries have NonCT status — their VAT cannot be reclaimed but the gross amount is included in the DLA total.
+                    </div>
+                    <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse', marginTop: '0.3rem' }}>
+                        <thead>
+                            <tr style={{ borderBottom: '1px solid #ffe0b2' }}>
+                                <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>Description</th>
+                                <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>Category</th>
+                                <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>Date</th>
+                                <th style={{ textAlign: 'right', padding: '4px 6px', fontWeight: 600 }}>Gross</th>
+                                <th style={{ textAlign: 'right', padding: '4px 6px', fontWeight: 600 }}>VAT (excluded)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {vatExcludedEntries.map(entry => (
+                                <tr key={entry.id} style={{ borderBottom: '1px solid #fff3e0' }}>
+                                    <td style={{ padding: '4px 6px' }}>{entry.description || '—'}</td>
+                                    <td style={{ padding: '4px 6px' }}>{entry.category || '—'}</td>
+                                    <td style={{ padding: '4px 6px' }}>{entry.entryDate ? new Date(entry.entryDate).toLocaleDateString('en-GB') : '—'}</td>
+                                    <td style={{ padding: '4px 6px', textAlign: 'right' }}>{formatCurrency(entry.amountGross || 0)}</td>
+                                    <td style={{ padding: '4px 6px', textAlign: 'right', color: '#e65100', fontWeight: 600 }}>{formatCurrency(entry.vatAmount || 0)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </details>
+            )}
 
 
             <div className="dla-list">

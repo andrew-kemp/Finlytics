@@ -277,9 +277,34 @@ export default function VatReturns() {
                 return sum;
             }, 0);
 
+        // Collect NonCT items that fall in this quarter but are excluded from VAT reclaim
+        const vatExcludedItems = [
+            ...expenses.filter(e => e.ctTag === 'NonCT' && e.vatAmount).filter(e => {
+                if (!e.entryDate) return false;
+                const d = new Date(e.entryDate);
+                const isPreInception = inceptionDate && d < inceptionDate;
+                if (!isPreInception && d >= start && d <= end) return true;
+                if (isPreInception && isFirstVatQuarter && (!fourYearCutoff || d >= fourYearCutoff)) return true;
+                if (isFirstVatQuarter && !isPreInception && inceptionDate && d >= inceptionDate && d < start) return true;
+                if (!inceptionDate && isOldestDisplayedQuarter && d < start) return true;
+                return false;
+            }).map(e => ({ ...e, source: 'Expense' })),
+            ...dlaEntries.filter(e => e.direction === 'OwedToDirector' && e.ctTag === 'NonCT' && e.vatAmount).filter(e => {
+                if (!e.entryDate) return false;
+                const d = new Date(e.entryDate);
+                const isPreInception = inceptionDate && d < inceptionDate;
+                const inPeriod = !isPreInception && d >= start && d <= end;
+                const preRegistration = isPreInception && isFirstVatQuarter && (!fourYearCutoff || d >= fourYearCutoff);
+                const stubPeriod = isFirstVatQuarter && !isPreInception && inceptionDate && d >= inceptionDate && d < start;
+                const preInception = !inceptionDate && isOldestDisplayedQuarter && d < start;
+                return inPeriod || preRegistration || stubPeriod || preInception;
+            }).map(e => ({ ...e, source: 'DLA' }))
+        ];
+        const vatExcludedTotal = vatExcludedItems.reduce((s, e) => s + (e.vatAmount || 0), 0);
+
         const vatOut  = vatOutExpenses + vatOutDla;
         const vatOwed = vatIn - vatOut;
-        return { vatIn, vatOut, vatOutExpenses, vatOutDla, vatOwed, isOldestDisplayedQuarter };
+        return { vatIn, vatOut, vatOutExpenses, vatOutDla, vatOwed, isOldestDisplayedQuarter, vatExcludedItems, vatExcludedTotal };
     };
 
     const getFiledForQuarter = (q) => {
@@ -1247,6 +1272,11 @@ export default function VatReturns() {
                                             incl. DLA {fmt(filingCalc.vatOutDla)}
                                         </div>
                                     )}
+                                    {filingCalc.vatExcludedTotal > 0 && (
+                                        <div style={{ fontSize: '0.72rem', color: '#e65100', marginTop: 2 }}>
+                                            {fmt(filingCalc.vatExcludedTotal)} excluded (NonCT)
+                                        </div>
+                                    )}
                                 </div>
                                 <div style={{
                                     background: filingCalc.vatOwed >= 0 ? '#fff5f5' : '#f6fff8',
@@ -1265,6 +1295,40 @@ export default function VatReturns() {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* VAT-Excluded items (NonCT) */}
+                            {filingCalc.vatExcludedItems && filingCalc.vatExcludedItems.length > 0 && (
+                                <div style={{ marginBottom: 16, padding: '10px 12px', background: '#fff8e1', border: '1px solid #ffe0b2', borderRadius: 8 }}>
+                                    <div style={{ fontWeight: 600, fontSize: '0.82rem', marginBottom: 8, color: '#e65100' }}>
+                                        ⚠️ VAT excluded from reclaim ({filingCalc.vatExcludedItems.length} item{filingCalc.vatExcludedItems.length !== 1 ? 's' : ''} · {fmt(filingCalc.vatExcludedTotal)} VAT)
+                                    </div>
+                                    <div style={{ fontSize: '0.78rem', color: '#5d4037', marginBottom: 6 }}>
+                                        These items have NonCT status — their VAT cannot be reclaimed but the gross amount counts in the DLA/expense total.
+                                    </div>
+                                    <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse' }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: '1px solid #ffe0b2' }}>
+                                                <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>Source</th>
+                                                <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>Description</th>
+                                                <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>Category</th>
+                                                <th style={{ textAlign: 'right', padding: '4px 6px', fontWeight: 600 }}>Gross</th>
+                                                <th style={{ textAlign: 'right', padding: '4px 6px', fontWeight: 600 }}>VAT (excluded)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filingCalc.vatExcludedItems.map((item, i) => (
+                                                <tr key={i} style={{ borderBottom: '1px solid #fff3e0' }}>
+                                                    <td style={{ padding: '4px 6px' }}>{item.source}</td>
+                                                    <td style={{ padding: '4px 6px' }}>{item.description || item.supplierName || '—'}</td>
+                                                    <td style={{ padding: '4px 6px' }}>{item.category || '—'}</td>
+                                                    <td style={{ padding: '4px 6px', textAlign: 'right' }}>{fmt(item.amountGross || 0)}</td>
+                                                    <td style={{ padding: '4px 6px', textAlign: 'right', color: '#e65100', fontWeight: 600 }}>{fmt(item.vatAmount || 0)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
 
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                                 <div className="form-group" style={{ margin: 0 }}>
