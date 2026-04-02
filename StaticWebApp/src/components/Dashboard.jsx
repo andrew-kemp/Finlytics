@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import TrivialBenefitModal from './TrivialBenefitModal';
+import QuickInvoice from './QuickInvoice';
 import {
     getInvoices,
     getExpenses,
@@ -7,7 +8,10 @@ import {
     getYtdAggregates,
     getCompanySettings,
     getVatReturns,
-    getDlaEntries
+    getDlaEntries,
+    getBillsSummary,
+    getPayrollSettings,
+    getPayrollRuns
 } from '../services/apiService';
 
 export default function Dashboard({ onNavigate }) {
@@ -22,7 +26,9 @@ export default function Dashboard({ onNavigate }) {
     const [showCtModal, setShowCtModal] = useState(false);
     const [showQuickMenu, setShowQuickMenu] = useState(false);
     const [showTrivialBenefit, setShowTrivialBenefit] = useState(false);
+    const [showQuickInvoice, setShowQuickInvoice] = useState(false);
     const [directors, setDirectors] = useState([]);
+    const [deadlines, setDeadlines] = useState([]);
     const quickMenuRef = useRef(null);
 
     // Close dropdown on outside click
@@ -136,14 +142,17 @@ export default function Dashboard({ onNavigate }) {
             if (metrics) { setRefreshing(true); } else { setLoading(true); }
             
             // Fire all fetches in parallel — no sequential waterfalls
-            const [invoices, expenses, companyAggregates, settings, filedReturns, dlaEntries, ytdAggregates] = await Promise.all([
+            const [invoices, expenses, companyAggregates, settings, filedReturns, dlaEntries, ytdAggregates, billsSummary, payrollSettings, payrollRuns] = await Promise.all([
                 getInvoices(),
                 getExpenses(),
                 getCompanyAggregates(getCurrentPeriodKey()).catch(() => ({})),
                 getCompanySettings().catch(() => null),
                 getVatReturns().catch(() => []),
                 getDlaEntries().catch(() => []),
-                getYtdAggregates().catch(() => ({}))
+                getYtdAggregates().catch(() => ({})),
+                getBillsSummary().catch(() => null),
+                getPayrollSettings().catch(() => null),
+                getPayrollRuns().catch(() => [])
             ]);
 
             setCompanySettings(settings);
@@ -160,15 +169,16 @@ export default function Dashboard({ onNavigate }) {
             const dlaOwedToCompany = dlaEntries
                 .filter(e => e.direction === 'OwedToCompany')
                 .reduce((sum, e) => sum + (e.remainingBalance ?? e.amountGross ?? 0), 0);
-            // HMRC VAT blocking: only specific categories have blocked input tax.
+            // HMRC VAT blocking: items without CT relief also have no VAT relief.
             // - Client entertainment (SI 1992/3222 Business Entertainment Regulations): blocked
             // - Trivial benefits (s.323A ITEPA): CT-deductible but VAT is not reclaimable
-            // - NonCT tagging alone does NOT block VAT — those are separate HMRC rules
+            // - NonCT items: no CT relief → no VAT relief (gross still counts in DLA total)
             const isVatBlocked = (item) => {
                 const cat = (item.category || '').toLowerCase();
                 return cat.includes('entertainment') ||
                        cat === 'trivial benefit' ||
-                       item.isTrivialBenefit === true;
+                       item.isTrivialBenefit === true ||
+                       item.ctTag === 'NonCT';
             };
             // DLA input VAT (OwedToDirector = director paid company expense = reclaimable)
             // Excludes entertainment/NonCT entries per HMRC Business Entertainment Regulations
@@ -194,10 +204,19 @@ export default function Dashboard({ onNavigate }) {
                 ...e,
                 entryDate: e.entryDate || e.datePaid
             })), 'entryDate', settings);
-            const periodDlaEntries = filterByDateRange(
-                dlaEntries.filter(e => e.direction === 'OwedToDirector'),
-                'entryDate', settings
-            );
+            const periodDlaEntries = (() => {
+                const owedToDir = dlaEntries.filter(e => e.direction === 'OwedToDirector');
+                const { startDate, endDate } = getDateRange(settings);
+                const inceptionRaw = settings?.companyInceptionDate || settings?.incorporationDate;
+                const inceptionDate = inceptionRaw ? new Date(inceptionRaw) : null;
+                return owedToDir.filter(e => {
+                    if (!e.entryDate) return false;
+                    const d = new Date(e.entryDate);
+                    // Pre-inception entries: treat as if incurred on inception date
+                    const effectiveDate = (inceptionDate && d < inceptionDate) ? inceptionDate : d;
+                    return effectiveDate >= startDate && effectiveDate <= endDate;
+                });
+            })();
 
             // Income: count invoices that are Paid OR Sent (outstanding) in period
             const paidInvoices = periodInvoices.filter(inv => inv.status === 'Paid');
@@ -263,7 +282,10 @@ export default function Dashboard({ onNavigate }) {
             const corpTaxPaid = ytdAggregates?.corpTaxPaid || 0;
             const corpTaxDue = Math.max(0, corpTaxEstimate - corpTaxPaid);
 
-            const currentBalance = income - expenseGross - salary - (ytdAggregates?.payeRemitted || 0) - 
+            // DLA gross (OwedToDirector) in the selected period — real liability / outflow
+            const periodDlaGross = periodDlaEntries.reduce((sum, e) => sum + (e.amountGross || 0), 0);
+
+            const currentBalance = income - expenseGross - periodDlaGross - salary - (ytdAggregates?.payeRemitted || 0) - 
                                    employeeNI - employerNI - corpTaxPaid - (ytdAggregates?.dividendsPaid || 0);
 
             setMetrics({
@@ -294,8 +316,182 @@ export default function Dashboard({ onNavigate }) {
                 psaExpenses: periodExpenses
                     .filter(exp => exp.category === 'Staff Entertainment (PSA)')
                     .reduce((sum, exp) => sum + (exp.amountGross || 0), 0),
-                unfiledVatBalance
+                unfiledVatBalance,
+                // Bills / Accounts Payable summary
+                billsTotalUnpaid: billsSummary?.totalUnpaid || 0,
+                billsOverdueCount: billsSummary?.overdueCount || 0,
+                billsOverdueAmount: billsSummary?.overdueAmount || 0,
+                billsDueThisWeek: billsSummary?.dueThisWeek || 0,
+                billsDueThisWeekAmount: billsSummary?.dueThisWeekAmount || 0,
+                billsPaidThisMonth: billsSummary?.paidThisMonth || 0,
+                billsAwaitingApproval: billsSummary?.awaitingApproval || 0,
+                billsAging0to30: billsSummary?.aging0to30 || 0,
+                billsAging31to60: billsSummary?.aging31to60 || 0,
+                billsAging61Plus: billsSummary?.aging61Plus || 0,
+                // Accounts Receivable aging (from invoices)
+                arOverdue: invoices.filter(inv => inv.status !== 'Paid' && inv.status !== 'Draft' && inv.dueDate && new Date(inv.dueDate) < new Date()).length,
+                arOverdueAmount: invoices
+                    .filter(inv => inv.status !== 'Paid' && inv.status !== 'Draft' && inv.dueDate && new Date(inv.dueDate) < new Date())
+                    .reduce((sum, inv) => sum + (inv.amountGross || 0), 0),
+                // Cash flow summary (includes DLA as a real liability / outflow)
+                periodDlaGross,
+                cashFlowIn: income,
+                cashFlowOut: expenseGross + periodDlaGross + salary + (ytdAggregates?.payeRemitted || 0) + employeeNI + employerNI + corpTaxPaid + (ytdAggregates?.dividendsPaid || 0),
+                cashFlowNet: income - expenseGross - periodDlaGross - salary - (ytdAggregates?.payeRemitted || 0) - employeeNI - employerNI - corpTaxPaid - (ytdAggregates?.dividendsPaid || 0)
             });
+
+            // ── Upcoming Deadlines ──────────────────────────────────────────
+            const now = new Date();
+            const upcomingDeadlines = [];
+
+            // VAT deadlines — next unfiled quarter
+            const vatStartMonth = settings?.vatQuarterStartMonth;
+            if (vatStartMonth && settings?.vatRegistrationNumber) {
+                // Lower bound: only check quarters starting on/after VAT effective date (or inception as fallback)
+                const vatEffRaw = settings?.vatEffectiveDate;
+                const inceptionRaw2 = settings?.companyInceptionDate || settings?.incorporationDate;
+                const vatLowerBound = vatEffRaw ? new Date(vatEffRaw)
+                    : inceptionRaw2 ? new Date(inceptionRaw2) : null;
+
+                const startM = (vatStartMonth - 1 + 12) % 12; // 0-indexed
+                const monthsFromLastStart = (now.getMonth() - startM + 12) % 12;
+                const monthsBack = monthsFromLastStart % 3;
+                const currentQStart = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
+
+                // Check recent quarters (current + 2 past) for next unfiled
+                for (let i = 1; i <= 3; i++) {
+                    const qStart = new Date(currentQStart.getFullYear(), currentQStart.getMonth() - (i - 1) * 3, 1);
+                    const qEnd = new Date(qStart.getFullYear(), qStart.getMonth() + 3, 0, 23, 59, 59, 999);
+
+                    // Skip quarters that started before VAT registration became effective
+                    if (vatLowerBound && qStart < vatLowerBound) continue;
+
+                    // Already filed?
+                    const filed = filedReturns.some(fr => {
+                        if (!fr.quarterStartDate) return false;
+                        const frStart = new Date(fr.quarterStartDate);
+                        return Math.abs(frStart - qStart) < 86400000; // within 1 day
+                    });
+                    if (filed) continue;
+
+                    // Only show if quarter has ended (can be filed)
+                    if (qEnd > now) continue;
+
+                    // HMRC deadline: 1 calendar month + 7 days after quarter end
+                    // e.g. quarter ending Feb 28 → deadline April 7 (month+2 because JS months are 0-indexed)
+                    const fileDeadline = new Date(qEnd.getFullYear(), qEnd.getMonth() + 2, 7);
+                    const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                    const qLabel = `${MONTHS_SHORT[qStart.getMonth()]} – ${MONTHS_SHORT[qEnd.getMonth()]} ${qEnd.getFullYear()}`;
+                    const daysUntilFile = Math.ceil((fileDeadline - now) / 86400000);
+
+                    upcomingDeadlines.push({
+                        type: 'vat-file',
+                        icon: '🏛️',
+                        label: `VAT Return: ${qLabel}`,
+                        deadline: fileDeadline,
+                        daysUntil: daysUntilFile,
+                        urgent: daysUntilFile <= 14,
+                        overdue: daysUntilFile < 0,
+                        detail: daysUntilFile < 0
+                            ? `Overdue by ${Math.abs(daysUntilFile)} days`
+                            : `File & pay by ${fileDeadline.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`,
+                        action: 'vat-returns'
+                    });
+                    break; // Only show the next unfiled quarter
+                }
+
+                // Also show upcoming current quarter end date
+                const currentQEnd = new Date(currentQStart.getFullYear(), currentQStart.getMonth() + 3, 0);
+                if (currentQEnd > now) {
+                    const daysLeft = Math.ceil((currentQEnd - now) / 86400000);
+                    const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                    upcomingDeadlines.push({
+                        type: 'vat-quarter',
+                        icon: '📅',
+                        label: `Current VAT quarter ends`,
+                        deadline: currentQEnd,
+                        daysUntil: daysLeft,
+                        urgent: daysLeft <= 14,
+                        overdue: false,
+                        detail: `${currentQEnd.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} (${daysLeft} days)`,
+                        action: 'vat-returns'
+                    });
+                }
+            }
+
+            // Payroll deadlines
+            const payDay = payrollSettings?.payDayOfMonth || 25;
+            const hasPayrollRuns = Array.isArray(payrollRuns) && payrollRuns.length > 0;
+            if (payrollSettings?.employerPAYEReference || payrollSettings?.employerPayeReference) {
+                // Next pay day — always show as a reminder to run payroll
+                let nextPayDate = new Date(now.getFullYear(), now.getMonth(), payDay);
+                if (nextPayDate <= now) nextPayDate = new Date(now.getFullYear(), now.getMonth() + 1, payDay);
+                const daysUntilPay = Math.ceil((nextPayDate - now) / 86400000);
+
+                upcomingDeadlines.push({
+                    type: 'payroll-run',
+                    icon: '💰',
+                    label: 'Next Pay Day',
+                    deadline: nextPayDate,
+                    daysUntil: daysUntilPay,
+                    urgent: daysUntilPay <= 7,
+                    overdue: false,
+                    detail: `${nextPayDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} (${daysUntilPay} days)`,
+                    action: 'payroll'
+                });
+
+                // PAYE/NI payment deadline — only show if there have been actual payroll runs
+                if (hasPayrollRuns) {
+                    const lastPayMonth = nextPayDate <= now ? now.getMonth() : now.getMonth();
+                    let payeDeadline = new Date(now.getFullYear(), lastPayMonth + 1, 22);
+                    if (payeDeadline <= now) payeDeadline = new Date(now.getFullYear(), lastPayMonth + 2, 22);
+                    const daysUntilPaye = Math.ceil((payeDeadline - now) / 86400000);
+
+                    upcomingDeadlines.push({
+                        type: 'paye-payment',
+                        icon: '🏦',
+                        label: 'PAYE/NI Payment to HMRC',
+                        deadline: payeDeadline,
+                        daysUntil: daysUntilPaye,
+                        urgent: daysUntilPaye <= 7,
+                        overdue: daysUntilPaye < 0,
+                        detail: daysUntilPaye < 0
+                            ? `Overdue by ${Math.abs(daysUntilPaye)} days`
+                            : `Due ${payeDeadline.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} (${daysUntilPaye} days)`,
+                        action: 'payroll'
+                    });
+                }
+            }
+
+            // Corporation Tax deadline — 9 months + 1 day after financial year end
+            const inceptionRaw = settings?.companyInceptionDate || settings?.incorporationDate;
+            if (inceptionRaw) {
+                const inception = new Date(inceptionRaw);
+                // First FY end = 1 year after inception (or next accounting reference date)
+                let fyEnd = new Date(inception.getFullYear() + 1, inception.getMonth(), inception.getDate() - 1);
+                // Move to next FY if this one has passed
+                while (fyEnd < now) {
+                    fyEnd = new Date(fyEnd.getFullYear() + 1, fyEnd.getMonth(), fyEnd.getDate());
+                }
+                const ctDeadline = new Date(fyEnd.getFullYear(), fyEnd.getMonth() + 9, fyEnd.getDate() + 1);
+                const daysUntilCt = Math.ceil((ctDeadline - now) / 86400000);
+
+                upcomingDeadlines.push({
+                    type: 'ct-payment',
+                    icon: '📋',
+                    label: 'Corporation Tax Payment',
+                    deadline: ctDeadline,
+                    daysUntil: daysUntilCt,
+                    urgent: daysUntilCt <= 30,
+                    overdue: daysUntilCt < 0,
+                    detail: `FY ends ${fyEnd.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · Pay by ${ctDeadline.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`,
+                    action: 'reports'
+                });
+            }
+
+            // Sort by nearest deadline first
+            upcomingDeadlines.sort((a, b) => a.deadline - b.deadline);
+            setDeadlines(upcomingDeadlines);
 
         } catch (error) {
             console.error('Error loading dashboard data:', error);
@@ -378,6 +574,9 @@ export default function Dashboard({ onNavigate }) {
                                 </button>
                                 <button onClick={() => { setShowQuickMenu(false); setShowTrivialBenefit(true); }}>
                                     🎁 Trivial Benefit
+                                </button>
+                                <button onClick={() => { setShowQuickMenu(false); setShowQuickInvoice(true); }}>
+                                    ⚡ Quick Invoice
                                 </button>
                             </div>
                         )}
@@ -550,7 +749,76 @@ export default function Dashboard({ onNavigate }) {
                         <div className="metric-detail">Trading: {formatCurrency(metrics.tradingProfit)}</div>
                     </div>
                 </div>
+
+                <div className="metric-card bills" style={{ cursor: 'pointer' }} onClick={() => onNavigate && onNavigate('bills')}>
+                    <div className="metric-icon">📋</div>
+                    <div className="metric-content">
+                        <div className="metric-label">Bills / Accounts Payable</div>
+                        <div className={`metric-value ${metrics.billsTotalUnpaid > 0 ? 'negative' : ''}`}>
+                            {formatCurrency(metrics.billsTotalUnpaid)}
+                        </div>
+                        <div className="metric-detail">
+                            {metrics.billsOverdueCount > 0
+                                ? <span style={{ color: '#dc3545' }}>⚠ {metrics.billsOverdueCount} overdue ({formatCurrency(metrics.billsOverdueAmount)})</span>
+                                : 'No overdue bills'}
+                            {metrics.billsAwaitingApproval > 0 && <span> · {metrics.billsAwaitingApproval} awaiting approval</span>}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="metric-card cashflow">
+                    <div className="metric-icon">📈</div>
+                    <div className="metric-content">
+                        <div className="metric-label">Cash Flow (Net)</div>
+                        <div className={`metric-value ${metrics.cashFlowNet >= 0 ? 'positive' : 'negative'}`}>
+                            {formatCurrency(metrics.cashFlowNet)}
+                        </div>
+                        <div className="metric-detail">
+                            In: {formatCurrency(metrics.cashFlowIn)} | Out: {formatCurrency(metrics.cashFlowOut)}
+                        </div>
+                    </div>
+                </div>
             </div>
+
+            {/* Upcoming Deadlines */}
+            {deadlines.length > 0 && (
+                <div style={{ margin: '0 0 1rem', padding: '0.85rem 1rem', background: '#fff', borderRadius: '0.75rem', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                    <h3 style={{ margin: '0 0 0.6rem', fontSize: '1rem' }}>📅 Upcoming Deadlines</h3>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        {deadlines.map((d, i) => (
+                            <div
+                                key={i}
+                                onClick={() => onNavigate && onNavigate(d.action)}
+                                style={{
+                                    flex: '1 1 220px',
+                                    maxWidth: '320px',
+                                    padding: '0.6rem 0.8rem',
+                                    borderRadius: '0.5rem',
+                                    border: `1px solid ${d.overdue ? '#dc3545' : d.urgent ? '#e65100' : 'rgba(0,0,0,0.08)'}`,
+                                    background: d.overdue ? '#fff5f5' : d.urgent ? '#fff8f0' : '#f8fafc',
+                                    cursor: 'pointer',
+                                    transition: 'box-shadow 0.15s',
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'}
+                                onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
+                                    <span style={{ fontSize: '1.1rem' }}>{d.icon}</span>
+                                    <span style={{ fontWeight: 600, fontSize: '0.85rem', color: d.overdue ? '#dc3545' : '#1e293b' }}>{d.label}</span>
+                                </div>
+                                <div style={{ fontSize: '0.78rem', color: d.overdue ? '#dc3545' : d.urgent ? '#e65100' : '#64748b' }}>
+                                    {d.detail}
+                                </div>
+                                {d.overdue && (
+                                    <div style={{ marginTop: '0.25rem', fontSize: '0.72rem', fontWeight: 700, color: '#dc3545', textTransform: 'uppercase' }}>
+                                        ⚠ OVERDUE
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             <div className="dashboard-info">
                 <div className="info-card">
@@ -560,6 +828,40 @@ export default function Dashboard({ onNavigate }) {
                             <span>Unpaid Invoices:</span>
                             <span><strong>{metrics.unpaidInvoices}</strong> ({formatCurrency(metrics.unpaidAmount)})</span>
                         </div>
+                        {metrics.arOverdue > 0 && (
+                            <div className="info-row" style={{ color: '#dc3545' }}>
+                                <span>↳ Overdue (past due date):</span>
+                                <span><strong>{metrics.arOverdue}</strong> ({formatCurrency(metrics.arOverdueAmount)})</span>
+                            </div>
+                        )}
+                        {metrics.billsTotalUnpaid > 0 && (
+                            <div className="info-row">
+                                <span>Unpaid Bills (AP):</span>
+                                <span style={{ cursor: 'pointer', textDecoration: 'underline', color: '#0d6efd' }} onClick={() => onNavigate && onNavigate('bills')}>
+                                    <strong>{formatCurrency(metrics.billsTotalUnpaid)}</strong>
+                                </span>
+                            </div>
+                        )}
+                        {metrics.billsOverdueCount > 0 && (
+                            <div className="info-row" style={{ color: '#dc3545' }}>
+                                <span>↳ Overdue bills:</span>
+                                <span><strong>{metrics.billsOverdueCount}</strong> ({formatCurrency(metrics.billsOverdueAmount)})</span>
+                            </div>
+                        )}
+                        {metrics.billsDueThisWeek > 0 && (
+                            <div className="info-row" style={{ color: '#e65100' }}>
+                                <span>↳ Due this week:</span>
+                                <span><strong>{metrics.billsDueThisWeek}</strong> ({formatCurrency(metrics.billsDueThisWeekAmount)})</span>
+                            </div>
+                        )}
+                        {(metrics.billsAging0to30 > 0 || metrics.billsAging31to60 > 0 || metrics.billsAging61Plus > 0) && (
+                            <div className="info-row" style={{ fontSize: '0.85rem', color: '#6c757d' }}>
+                                <span>AP Aging:</span>
+                                <span>
+                                    0-30d: {formatCurrency(metrics.billsAging0to30)} | 31-60d: {formatCurrency(metrics.billsAging31to60)} | 61+d: {formatCurrency(metrics.billsAging61Plus)}
+                                </span>
+                            </div>
+                        )}
                         <div className="info-row">
                             <span>VAT Unfiled (all-time):</span>
                             <span className={(metrics.unfiledVatBalance || 0) >= 0 ? 'text-danger' : 'text-success'}>
@@ -794,6 +1096,12 @@ export default function Dashboard({ onNavigate }) {
                 directors={directors}
                 onClose={() => setShowTrivialBenefit(false)}
                 onSaved={() => { setShowTrivialBenefit(false); loadData(); }}
+            />
+        )}
+        {showQuickInvoice && (
+            <QuickInvoice
+                onClose={() => setShowQuickInvoice(false)}
+                onCreated={() => loadData()}
             />
         )}
 

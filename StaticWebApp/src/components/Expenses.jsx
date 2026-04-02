@@ -93,7 +93,7 @@ const Expenses = ({ openNew }) => {
         try {
             setLoading(true);
             const [expensesData, suppliersData, categoriesData, vatApplicabilitiesData, paymentMethodsData, settingsData] = await Promise.all([
-                getExpenses().catch(err => { console.error('Error loading expenses:', err); return []; }),
+                getExpenses({ companyOnly: true }).catch(err => { console.error('Error loading expenses:', err); return []; }),
                 getSuppliers().catch(err => { console.error('Error loading suppliers:', err); return []; }),
                 getCategories().catch(err => { console.error('Error loading categories:', err); return []; }),
                 getVATApplicabilities().catch(err => { console.error('Error loading VAT applicabilities:', err); return []; }),

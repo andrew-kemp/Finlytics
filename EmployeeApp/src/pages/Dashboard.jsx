@@ -1,8 +1,8 @@
 
 
-import { useAuth } from '@clerk/react'
-import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { useAuth, useUser } from '@clerk/react'
+import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getProfile, getExpenses, getMileage, getMileageTracker } from '../services/api'
 
 const StatCard = ({ label, value, icon, className = '' }) => (
@@ -17,10 +17,14 @@ const StatCard = ({ label, value, icon, className = '' }) => (
 
 export default function Dashboard() {
   const { getToken } = useAuth()
+  const { user } = useUser()
+  const navigate = useNavigate()
   const [profile, setProfile] = useState(null)
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [showExpenseSheet, setShowExpenseSheet] = useState(false)
+  const sheetRef = useRef(null)
 
   useEffect(() => {
     async function load() {
@@ -51,22 +55,71 @@ export default function Dashboard() {
     load()
   }, [getToken])
 
+  // Close the action sheet when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (sheetRef.current && !sheetRef.current.contains(e.target)) {
+        setShowExpenseSheet(false)
+      }
+    }
+    if (showExpenseSheet) document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showExpenseSheet])
+
   if (loading) return <div className="loading">Loading dashboard...</div>
   if (error) return <div className="error-banner">⚠️ {error}</div>
 
   const tracker = stats?.mileageTracker
   const pct = tracker?.percentUsed || 0
+  const todayStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+  const displayName = user?.fullName || user?.firstName || profile?.displayName || 'there'
 
   return (
     <div className="dashboard">
-      <header className="dashboard-header">
-        <h1>Welcome, {profile?.displayName || profile?.email || 'there'} 👋</h1>
-        <p>Here's a summary of your expenses and mileage activity.</p>
-      </header>
+      {/* Hero banner */}
+      <div className="dashboard-hero">
+        <img src="/finlytics-logo.png" alt="Finlytics" className="hero-logo" />
+        <div className="hero-info">
+          <div className="hero-date">{todayStr}</div>
+          <div className="hero-greeting">Welcome back, {displayName} 👋</div>
+        </div>
+      </div>
 
       <div className="quick-actions">
-        <Link to="/expenses?new=true" className="btn-primary">＋ New Expense</Link>
-        <Link to="/mileage?new=true" className="btn-secondary">＋ Add Mileage</Link>
+        <div className="action-wrapper" ref={sheetRef}>
+          <button className="btn btn-primary" onClick={() => setShowExpenseSheet(!showExpenseSheet)}>
+            ＋ New Expense
+          </button>
+          {showExpenseSheet && (
+            <div className="action-sheet">
+              <div className="action-sheet-header">How would you like to add an expense?</div>
+              <button className="action-sheet-item" onClick={() => navigate('/expenses?mode=scan')}>
+                <span className="action-sheet-icon">📸</span>
+                <div className="action-sheet-text">
+                  <strong>Scan Receipt</strong>
+                  <span>Take a photo or use your camera</span>
+                </div>
+              </button>
+              <button className="action-sheet-item" onClick={() => navigate('/expenses?mode=upload')}>
+                <span className="action-sheet-icon">📎</span>
+                <div className="action-sheet-text">
+                  <strong>Upload File</strong>
+                  <span>Upload a photo, image, or PDF</span>
+                </div>
+              </button>
+              <button className="action-sheet-item" onClick={() => navigate('/expenses?mode=manual')}>
+                <span className="action-sheet-icon">✏️</span>
+                <div className="action-sheet-text">
+                  <strong>Manual Entry</strong>
+                  <span>Enter expense details by hand</span>
+                </div>
+              </button>
+            </div>
+          )}
+        </div>
+        <button className="btn btn-accent" onClick={() => navigate('/mileage?new=true')}>
+          ＋ Add Mileage
+        </button>
       </div>
 
       <div className="dashboard-grid">

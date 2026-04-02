@@ -118,6 +118,8 @@ var host = new HostBuilder()
             services.AddScoped<IExpenseAuditEventRepository, ExpenseAuditEventRepository>();
             services.AddScoped<ICreditNoteRepository, CreditNoteRepository>();
             services.AddScoped<ITeamMemberRepository, TeamMemberRepository>();
+            services.AddScoped<IAccountantRepository, AccountantRepository>();
+            services.AddScoped<ICompanyAccountantRepository, CompanyAccountantRepository>();
         }
         else
         {

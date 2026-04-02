@@ -110,15 +110,17 @@ namespace FinanceHubFunctions.Services
             string toEmail,
             string subject,
             string htmlBody,
-            string fromAddressOverride = null)
+            string fromAddressOverride = null,
+            byte[] attachmentBytes = null,
+            string attachmentFileName = null)
         {
             var result = await SendEmailWithResultAsync(
                 toEmail,
                 subject,
                 htmlBody,
                 accessToken: "",           // DB settings don't need a token
-                attachmentBytes: null,
-                attachmentFileName: null,
+                attachmentBytes: attachmentBytes,
+                attachmentFileName: attachmentFileName,
                 logoBytes: null,
                 logoContentType: null,
                 logoContentId: null,

@@ -547,7 +547,9 @@ namespace FinanceHubFunctions.Functions
 
             // Link Clerk user to team member
             member.ClerkUserId = clerkUser.UserId;
-            member.DisplayName = clerkUser.FullName;
+            // Only overwrite DisplayName if Clerk provides a real name
+            if (!string.IsNullOrWhiteSpace(clerkUser.FullName))
+                member.DisplayName = clerkUser.FullName;
             member.Status = "Active";
             member.AcceptedAt = DateTime.UtcNow;
             member.InviteToken = null; // Consume the token

@@ -302,7 +302,7 @@ function MainContent() {
                         📒 Company Ledger
                     </li>
                     <li onClick={() => handleNavigate('team')} className={view === 'team' ? 'active' : ''}>
-                        👥 Team / Expenses
+                        👥 Team Expenses
                     </li>
 
                     <li className="nav-group-label">Assets &amp; Reporting</li>

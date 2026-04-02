@@ -236,7 +236,8 @@ export default function VatReturns() {
         }, 0);
 
         // Input VAT on expenses — first-VAT-quarter absorbs pre-registration expenses (4-year rule).
-        const vatOutExpenses = expenses.reduce((sum, e) => {
+        // NonCT items (e.g. client entertainment) have no VAT relief — excluded from reclaim.
+        const vatOutExpenses = expenses.filter(e => e.ctTag !== 'NonCT').reduce((sum, e) => {
             if (!e.entryDate) return sum;
             const d = new Date(e.entryDate);
             const isPreInception = inceptionDate && d < inceptionDate;
@@ -255,8 +256,9 @@ export default function VatReturns() {
 
         // DLA — first-VAT-quarter absorbs pre-registration director-paid costs (4-year rule).
         // HMRC allows reclaiming VAT on goods purchased up to 4 years before VAT registration.
+        // NonCT items (e.g. client entertainment) have no VAT relief — excluded from reclaim.
         const vatOutDla = dlaEntries
-            .filter(e => e.direction === 'OwedToDirector')
+            .filter(e => e.direction === 'OwedToDirector' && e.ctTag !== 'NonCT')
             .reduce((sum, e) => {
                 if (!e.entryDate) return sum;
                 const d = new Date(e.entryDate);

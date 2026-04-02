@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getTeamMembers, updateTeamMember, deleteTeamMember, getTeamApprovals, approveItem, rejectItem } from '../services/apiService';
+import { getTeamMembers, updateTeamMember, deleteTeamMember, getTeamApprovals, getTeamApprovalHistory, approveItem, rejectItem, batchApproveItems } from '../services/apiService';
 import Toast from './Toast';
 import { useToast } from '../hooks/useToast';
 
@@ -18,13 +18,17 @@ const ROLE_STYLES = {
 export default function TeamManagement() {
   const [members, setMembers] = useState([]);
   const [approvals, setApprovals] = useState({ expenses: [], mileage: [] });
+  const [history, setHistory] = useState({ expenses: [], mileage: [] });
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('');
-  const [activeSection, setActiveSection] = useState('members'); // members | approvals
+  const [activeSection, setActiveSection] = useState('approvals'); // approvals | history | members
   const [viewingMember, setViewingMember] = useState(null);
   const [rejectingItem, setRejectingItem] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
+  // Batch selection
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState(new Set());
+  const [selectedMileageIds, setSelectedMileageIds] = useState(new Set());
   const { toast, showToast, clearToast } = useToast();
 
   useEffect(() => {
@@ -33,12 +37,23 @@ export default function TeamManagement() {
 
   const loadData = async () => {
     try {
-      const [membersData, approvalsData] = await Promise.all([
+      const [membersData, approvalsData, historyData] = await Promise.all([
         getTeamMembers(),
-        getTeamApprovals().catch(() => ({ expenses: [], mileage: [] }))
+        getTeamApprovals().catch(() => ({ expenses: [], mileage: [] })),
+        getTeamApprovalHistory().catch(() => ({ expenses: [], mileage: [] }))
       ]);
       setMembers(membersData);
-      setApprovals(approvalsData);
+      // API now returns { expenses: [...], mileage: [...] }
+      const normalized = Array.isArray(approvalsData)
+        ? { expenses: approvalsData.filter(a => a.type === 'expense'), mileage: approvalsData.filter(a => a.type === 'mileage') }
+        : { expenses: approvalsData?.expenses || [], mileage: approvalsData?.mileage || [] };
+      setApprovals(normalized);
+      setHistory({
+        expenses: historyData?.expenses || [],
+        mileage: historyData?.mileage || []
+      });
+      setSelectedExpenseIds(new Set());
+      setSelectedMileageIds(new Set());
     } catch (error) {
       console.error('Error loading team data:', error);
       showToast('Failed to load team data', 'error');
@@ -88,7 +103,7 @@ export default function TeamManagement() {
     setProcessing(true);
     try {
       await approveItem(type, id);
-      showToast('Approved successfully!', 'success');
+      showToast('✅ Approved — employee notified by email', 'success');
       await loadData();
     } catch (error) {
       showToast(`Failed to approve: ${error.message}`, 'error');
@@ -103,12 +118,64 @@ export default function TeamManagement() {
     setProcessing(true);
     try {
       await rejectItem(rejectingItem.type, rejectingItem.id, rejectReason);
-      showToast('Rejected', 'success');
+      showToast('Rejected — employee notified by email', 'success');
       setRejectingItem(null);
       setRejectReason('');
       await loadData();
     } catch (error) {
       showToast(`Failed to reject: ${error.message}`, 'error');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const toggleExpenseSelection = (id) => {
+    setSelectedExpenseIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleMileageSelection = (id) => {
+    setSelectedMileageIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllExpenses = () => {
+    if (selectedExpenseIds.size === approvals.expenses?.length) {
+      setSelectedExpenseIds(new Set());
+    } else {
+      setSelectedExpenseIds(new Set(approvals.expenses?.map(e => e.id)));
+    }
+  };
+
+  const toggleAllMileage = () => {
+    if (selectedMileageIds.size === approvals.mileage?.length) {
+      setSelectedMileageIds(new Set());
+    } else {
+      setSelectedMileageIds(new Set(approvals.mileage?.map(m => m.id)));
+    }
+  };
+
+  const totalSelected = selectedExpenseIds.size + selectedMileageIds.size;
+  const selectedTotal = [...(approvals.expenses || [])].filter(e => selectedExpenseIds.has(e.id)).reduce((s, e) => s + (e.amountGross || 0), 0)
+    + [...(approvals.mileage || [])].filter(m => selectedMileageIds.has(m.id)).reduce((s, m) => s + (m.amount || 0), 0);
+
+  const handleBatchApprove = async () => {
+    if (totalSelected === 0) return;
+    if (!confirm(`Approve ${totalSelected} selected item(s) for a total of £${selectedTotal.toFixed(2)}?\n\nApproval emails will be sent to the employees and a payment CSV will be sent to you.`)) return;
+    setProcessingMessage(`Approving ${totalSelected} items...`);
+    setProcessing(true);
+    try {
+      await batchApproveItems([...selectedExpenseIds], [...selectedMileageIds]);
+      showToast(`✅ ${totalSelected} item(s) approved — emails sent with payment CSV`, 'success');
+      await loadData();
+    } catch (error) {
+      showToast(`Failed to batch approve: ${error.message}`, 'error');
     } finally {
       setProcessing(false);
     }
@@ -129,12 +196,16 @@ export default function TeamManagement() {
   };
 
   const pendingCount = (approvals.expenses?.length || 0) + (approvals.mileage?.length || 0);
+  const historyCount = (history.expenses?.length || 0) + (history.mileage?.length || 0);
+
+  // Helper: best display name for a member
+  const memberName = (m) => m.displayName || m.employeeName || m.email?.split('@')[0] || '—';
 
   if (loading) {
     return (
       <div className="loading-container">
         <div className="spinner"></div>
-        <div className="loading-text">Loading team data...</div>
+        <div className="loading-text">Loading team expenses...</div>
       </div>
     );
   }
@@ -152,37 +223,56 @@ export default function TeamManagement() {
     <div className="employees-container">
       <Toast toast={toast} onClose={clearToast} />
 
-      <div className="page-header">
-        <h1>Team Management</h1>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button
-            className={activeSection === 'members' ? 'btn-primary' : 'btn-secondary'}
-            onClick={() => setActiveSection('members')}>
-            👥 Members ({members.length})
-          </button>
-          <button
-            className={activeSection === 'approvals' ? 'btn-primary' : 'btn-secondary'}
-            onClick={() => setActiveSection('approvals')}
-            style={pendingCount > 0 ? { position: 'relative' } : {}}>
-            ✅ Approvals
-            {pendingCount > 0 && (
-              <span style={{
-                position: 'absolute', top: '-6px', right: '-6px',
-                background: '#dc2626', color: 'white', borderRadius: '50%',
-                width: '20px', height: '20px', fontSize: '0.7em',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 700
-              }}>
-                {pendingCount}
-              </span>
-            )}
-          </button>
-        </div>
+      {/* ── Page Header ── */}
+      <div className="page-header" style={{ marginBottom: '0' }}>
+        <h1>Team Expenses</h1>
+      </div>
+
+      {/* ── Tab Bar ── */}
+      <div style={{
+        display: 'flex', gap: '0', borderBottom: '2px solid #e5e7eb',
+        marginBottom: '1.25rem', marginTop: '0.5rem'
+      }}>
+        <button onClick={() => setActiveSection('approvals')} style={{
+          padding: '0.6rem 1.25rem', fontSize: '0.88em', fontWeight: 600,
+          background: 'none', border: 'none', cursor: 'pointer', position: 'relative',
+          color: activeSection === 'approvals' ? '#1e40af' : '#6b7280',
+          borderBottom: activeSection === 'approvals' ? '2px solid #1e40af' : '2px solid transparent',
+          marginBottom: '-2px'
+        }}>
+          ✅ Pending Approvals
+          {pendingCount > 0 && (
+            <span style={{
+              marginLeft: '0.4rem', background: '#dc2626', color: 'white', borderRadius: '10px',
+              padding: '0.1rem 0.45rem', fontSize: '0.78em', fontWeight: 700, verticalAlign: 'middle'
+            }}>
+              {pendingCount}
+            </span>
+          )}
+        </button>
+        <button onClick={() => setActiveSection('history')} style={{
+          padding: '0.6rem 1.25rem', fontSize: '0.88em', fontWeight: 600,
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: activeSection === 'history' ? '#1e40af' : '#6b7280',
+          borderBottom: activeSection === 'history' ? '2px solid #1e40af' : '2px solid transparent',
+          marginBottom: '-2px'
+        }}>
+          📋 History ({historyCount})
+        </button>
+        <button onClick={() => setActiveSection('members')} style={{
+          padding: '0.6rem 1.25rem', fontSize: '0.88em', fontWeight: 600,
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: activeSection === 'members' ? '#1e40af' : '#6b7280',
+          borderBottom: activeSection === 'members' ? '2px solid #1e40af' : '2px solid transparent',
+          marginBottom: '-2px'
+        }}>
+          👥 Team Members ({members.length})
+        </button>
       </div>
 
       {/* ── Members Section ── */}
       {activeSection === 'members' && (
-        <div className="employees-list">
+        <div>
           {members.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#6b7280' }}>
               <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>👥</div>
@@ -192,67 +282,62 @@ export default function TeamManagement() {
               </p>
             </div>
           ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th style={{ minWidth: '150px' }}>Name</th>
-                  <th style={{ minWidth: '200px' }}>Email</th>
-                  <th style={{ minWidth: '90px' }}>Role</th>
-                  <th style={{ minWidth: '90px' }}>Status</th>
-                  <th style={{ minWidth: '120px' }}>Invited</th>
-                  <th style={{ minWidth: '100px' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {members.map(member => {
-                  const ss = STATUS_STYLES[member.status] || STATUS_STYLES.Invited;
-                  const rs = ROLE_STYLES[member.role] || ROLE_STYLES.Employee;
-                  return (
-                    <tr key={member.id} style={{ cursor: 'pointer' }}
-                        onClick={() => setViewingMember(member)}>
-                      <td><strong>{member.displayName || '—'}</strong></td>
-                      <td>{member.email}</td>
-                      <td>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '0.75rem' }}>
+              {members.map(member => {
+                const ss = STATUS_STYLES[member.status] || STATUS_STYLES.Invited;
+                const rs = ROLE_STYLES[member.role] || ROLE_STYLES.Employee;
+                const name = memberName(member);
+                const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+                return (
+                  <div key={member.id}
+                    onClick={() => setViewingMember(member)}
+                    style={{
+                      background: 'white', border: '1px solid #e5e7eb', borderRadius: '0.75rem',
+                      padding: '1rem 1.15rem', cursor: 'pointer', transition: 'box-shadow 0.15s',
+                      display: 'flex', alignItems: 'center', gap: '0.85rem'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'}
+                    onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}>
+                    {/* Avatar */}
+                    <div style={{
+                      width: '42px', height: '42px', borderRadius: '50%', flexShrink: 0,
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 700, fontSize: '0.85em', letterSpacing: '0.03em'
+                    }}>
+                      {initials}
+                    </div>
+                    {/* Info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.15rem' }}>
+                        <strong style={{ fontSize: '0.95em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {name}
+                        </strong>
                         <span style={{
                           background: rs.bg, color: rs.color, borderRadius: '0.25rem',
-                          padding: '0.1rem 0.5rem', fontSize: '0.82em', fontWeight: 500
+                          padding: '0 0.4rem', fontSize: '0.72em', fontWeight: 600, flexShrink: 0
                         }}>
                           {member.role}
                         </span>
-                      </td>
-                      <td>
-                        <span style={{
-                          background: ss.bg, color: ss.color, borderRadius: '0.25rem',
-                          padding: '0.1rem 0.5rem', fontSize: '0.82em', fontWeight: 500
-                        }}>
-                          {ss.icon} {member.status}
-                        </span>
-                      </td>
-                      <td style={{ fontSize: '0.85em', color: '#6b7280' }}>
-                        {member.invitedAt ? new Date(member.invitedAt).toLocaleDateString('en-GB') : '—'}
-                      </td>
-                      <td onClick={e => e.stopPropagation()}>
-                        {member.status !== 'Disabled' ? (
-                          <button onClick={() => handleDisableMember(member)}
-                            className="btn-icon" title="Disable" style={{ color: '#dc2626' }}>
-                            🔴
-                          </button>
-                        ) : (
-                          <button onClick={() => handleDisableMember(member)}
-                            className="btn-icon" title="Enable" style={{ color: '#16a34a' }}>
-                            ✅
-                          </button>
+                      </div>
+                      <div style={{ fontSize: '0.8em', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {member.email}
+                        {member.employeeNumber && (
+                          <span style={{ marginLeft: '0.5rem', color: '#9ca3af' }}>• {member.employeeNumber}</span>
                         )}
-                        <button onClick={() => handleRemoveMember(member)}
-                          className="btn-icon" title="Remove" style={{ marginLeft: '5px', color: '#dc2626' }}>
-                          🗑️
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      </div>
+                    </div>
+                    {/* Status badge */}
+                    <span style={{
+                      background: ss.bg, color: ss.color, borderRadius: '0.25rem',
+                      padding: '0.15rem 0.5rem', fontSize: '0.75em', fontWeight: 500, flexShrink: 0, whiteSpace: 'nowrap'
+                    }}>
+                      {ss.icon} {member.status}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       )}
@@ -260,6 +345,23 @@ export default function TeamManagement() {
       {/* ── Approvals Section ── */}
       {activeSection === 'approvals' && (
         <div>
+          {/* Batch Action Bar */}
+          {totalSelected > 0 && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '0.5rem',
+              padding: '0.75rem 1rem', marginBottom: '1rem'
+            }}>
+              <div style={{ fontSize: '0.9em', color: '#1e40af', fontWeight: 600 }}>
+                {totalSelected} item{totalSelected > 1 ? 's' : ''} selected — £{selectedTotal.toFixed(2)}
+              </div>
+              <button className="btn-primary" onClick={handleBatchApprove}
+                style={{ background: '#16a34a', borderColor: '#16a34a', padding: '0.5rem 1.25rem' }}>
+                ✅ Approve Selected ({totalSelected})
+              </button>
+            </div>
+          )}
+
           {pendingCount === 0 ? (
             <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#6b7280' }}>
               <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>✅</div>
@@ -271,30 +373,53 @@ export default function TeamManagement() {
               {/* Expense Approvals */}
               {approvals.expenses?.length > 0 && (
                 <div style={{ marginBottom: '2rem' }}>
-                  <h3 style={{ fontSize: '0.95em', color: '#374151', marginBottom: '0.75rem' }}>
-                    💰 Expense Claims ({approvals.expenses.length})
-                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                    <h3 style={{ fontSize: '0.95em', color: '#374151', margin: 0 }}>
+                      💰 Expense Claims ({approvals.expenses.length})
+                    </h3>
+                    <button className="btn-secondary" onClick={toggleAllExpenses}
+                      style={{ fontSize: '0.8em', padding: '0.3rem 0.75rem' }}>
+                      {selectedExpenseIds.size === approvals.expenses.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                  </div>
                   <table className="data-table">
                     <thead>
                       <tr>
+                        <th style={{ width: '40px' }}></th>
                         <th>Employee</th>
-                        <th>Description</th>
-                        <th>Amount</th>
-                        <th>Date</th>
+                        <th>Supplier</th>
                         <th>Category</th>
+                        <th>Date</th>
+                        <th style={{ textAlign: 'right' }}>Net</th>
+                        <th style={{ textAlign: 'right' }}>VAT</th>
+                        <th style={{ textAlign: 'right' }}>Gross</th>
+                        <th>Receipt</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {approvals.expenses.map(expense => (
-                        <tr key={expense.id}>
-                          <td><strong>{expense.employeeName || expense.submittedBy || '—'}</strong></td>
-                          <td>{expense.description || '—'}</td>
-                          <td>£{expense.amount?.toFixed(2) || '0.00'}</td>
-                          <td style={{ fontSize: '0.85em' }}>
-                            {expense.date ? new Date(expense.date).toLocaleDateString('en-GB') : '—'}
+                        <tr key={expense.id} style={selectedExpenseIds.has(expense.id) ? { background: '#eff6ff' } : {}}>
+                          <td onClick={e => e.stopPropagation()}>
+                            <input type="checkbox"
+                              checked={selectedExpenseIds.has(expense.id)}
+                              onChange={() => toggleExpenseSelection(expense.id)} />
                           </td>
+                          <td>
+                            <strong>{expense.employeeName || '—'}</strong>
+                            {expense.employeeEmail && expense.employeeName !== expense.employeeEmail && (
+                              <div style={{ fontSize: '0.78em', color: '#6b7280' }}>{expense.employeeEmail}</div>
+                            )}
+                          </td>
+                          <td>{expense.supplier || '—'}</td>
                           <td>{expense.category || '—'}</td>
+                          <td style={{ fontSize: '0.85em' }}>
+                            {expense.entryDate ? new Date(expense.entryDate).toLocaleDateString('en-GB') : '—'}
+                          </td>
+                          <td style={{ textAlign: 'right', fontSize: '0.9em' }}>£{(expense.amountNet || 0).toFixed(2)}</td>
+                          <td style={{ textAlign: 'right', fontSize: '0.9em', color: '#6b7280' }}>£{(expense.vatAmount || expense.vATAmount || 0).toFixed(2)}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 600 }}>£{(expense.amountGross || 0).toFixed(2)}</td>
+                          <td>{expense.hasReceipt ? '📎' : '—'}</td>
                           <td>
                             <button className="btn-icon" title="Approve"
                               onClick={() => handleApprove('expense', expense.id)}
@@ -302,7 +427,7 @@ export default function TeamManagement() {
                               ✅
                             </button>
                             <button className="btn-icon" title="Reject"
-                              onClick={() => setRejectingItem({ type: 'expense', id: expense.id, name: expense.description })}
+                              onClick={() => setRejectingItem({ type: 'expense', id: expense.id, name: expense.supplier || 'Expense' })}
                               style={{ marginLeft: '5px', color: '#dc2626' }}>
                               ❌
                             </button>
@@ -317,27 +442,44 @@ export default function TeamManagement() {
               {/* Mileage Approvals */}
               {approvals.mileage?.length > 0 && (
                 <div>
-                  <h3 style={{ fontSize: '0.95em', color: '#374151', marginBottom: '0.75rem' }}>
-                    🚗 Mileage Claims ({approvals.mileage.length})
-                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                    <h3 style={{ fontSize: '0.95em', color: '#374151', margin: 0 }}>
+                      🚗 Mileage Claims ({approvals.mileage.length})
+                    </h3>
+                    <button className="btn-secondary" onClick={toggleAllMileage}
+                      style={{ fontSize: '0.8em', padding: '0.3rem 0.75rem' }}>
+                      {selectedMileageIds.size === approvals.mileage.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                  </div>
                   <table className="data-table">
                     <thead>
                       <tr>
+                        <th style={{ width: '40px' }}></th>
                         <th>Employee</th>
                         <th>Trip</th>
                         <th>Miles</th>
-                        <th>Amount</th>
+                        <th style={{ textAlign: 'right' }}>Amount</th>
                         <th>Date</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {approvals.mileage.map(trip => (
-                        <tr key={trip.id}>
-                          <td><strong>{trip.employeeName || trip.submittedBy || '—'}</strong></td>
+                        <tr key={trip.id} style={selectedMileageIds.has(trip.id) ? { background: '#eff6ff' } : {}}>
+                          <td onClick={e => e.stopPropagation()}>
+                            <input type="checkbox"
+                              checked={selectedMileageIds.has(trip.id)}
+                              onChange={() => toggleMileageSelection(trip.id)} />
+                          </td>
+                          <td>
+                            <strong>{trip.employeeName || '—'}</strong>
+                            {trip.employeeEmail && trip.employeeName !== trip.employeeEmail && (
+                              <div style={{ fontSize: '0.78em', color: '#6b7280' }}>{trip.employeeEmail}</div>
+                            )}
+                          </td>
                           <td>{trip.from} → {trip.to}</td>
                           <td>{trip.miles?.toFixed(1) || '0'}</td>
-                          <td>£{trip.amount?.toFixed(2) || '0.00'}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 600 }}>£{(trip.amount || 0).toFixed(2)}</td>
                           <td style={{ fontSize: '0.85em' }}>
                             {trip.date ? new Date(trip.date).toLocaleDateString('en-GB') : '—'}
                           </td>
@@ -364,6 +506,135 @@ export default function TeamManagement() {
         </div>
       )}
 
+      {/* ── History Section ── */}
+      {activeSection === 'history' && (
+        <div>
+          {historyCount === 0 ? (
+            <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#6b7280' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>📋</div>
+              <p style={{ fontSize: '1.05em', fontWeight: 500 }}>No approval history yet</p>
+              <p style={{ fontSize: '0.88em' }}>Approved and rejected claims will appear here.</p>
+            </div>
+          ) : (
+            <>
+              {/* Expense History */}
+              {history.expenses?.length > 0 && (
+                <div style={{ marginBottom: '2rem' }}>
+                  <h3 style={{ fontSize: '0.95em', color: '#374151', marginBottom: '0.75rem' }}>
+                    💰 Expense Claims ({history.expenses.length})
+                  </h3>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Status</th>
+                        <th>Employee</th>
+                        <th>Supplier</th>
+                        <th>Category</th>
+                        <th>Date</th>
+                        <th style={{ textAlign: 'right' }}>Gross</th>
+                        <th>Actioned</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {history.expenses.map(expense => (
+                        <tr key={expense.id}>
+                          <td>
+                            {expense.approvalStatus === 'Approved' ? (
+                              <span style={{ background: '#dcfce7', color: '#166534', borderRadius: '0.25rem',
+                                padding: '0.1rem 0.5rem', fontSize: '0.82em', fontWeight: 500 }}>
+                                ✅ Approved
+                              </span>
+                            ) : (
+                              <span style={{ background: '#fee2e2', color: '#dc2626', borderRadius: '0.25rem',
+                                padding: '0.1rem 0.5rem', fontSize: '0.82em', fontWeight: 500 }}
+                                title={expense.rejectionReason || ''}>
+                                ❌ Rejected
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            <strong>{expense.employeeName || '—'}</strong>
+                            {expense.employeeEmail && expense.employeeName !== expense.employeeEmail && (
+                              <div style={{ fontSize: '0.78em', color: '#6b7280' }}>{expense.employeeEmail}</div>
+                            )}
+                          </td>
+                          <td>{expense.supplier || '—'}</td>
+                          <td>{expense.category || '—'}</td>
+                          <td style={{ fontSize: '0.85em' }}>
+                            {expense.entryDate ? new Date(expense.entryDate).toLocaleDateString('en-GB') : '—'}
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 600 }}>£{(expense.amountGross || 0).toFixed(2)}</td>
+                          <td style={{ fontSize: '0.85em', color: '#6b7280' }}>
+                            {expense.approvedAt ? new Date(expense.approvedAt).toLocaleDateString('en-GB') : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Mileage History */}
+              {history.mileage?.length > 0 && (
+                <div>
+                  <h3 style={{ fontSize: '0.95em', color: '#374151', marginBottom: '0.75rem' }}>
+                    🚗 Mileage Claims ({history.mileage.length})
+                  </h3>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Status</th>
+                        <th>Employee</th>
+                        <th>Trip</th>
+                        <th>Miles</th>
+                        <th style={{ textAlign: 'right' }}>Amount</th>
+                        <th>Date</th>
+                        <th>Actioned</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {history.mileage.map(trip => (
+                        <tr key={trip.id}>
+                          <td>
+                            {trip.approvalStatus === 'Approved' ? (
+                              <span style={{ background: '#dcfce7', color: '#166534', borderRadius: '0.25rem',
+                                padding: '0.1rem 0.5rem', fontSize: '0.82em', fontWeight: 500 }}>
+                                ✅ Approved
+                              </span>
+                            ) : (
+                              <span style={{ background: '#fee2e2', color: '#dc2626', borderRadius: '0.25rem',
+                                padding: '0.1rem 0.5rem', fontSize: '0.82em', fontWeight: 500 }}
+                                title={trip.rejectionReason || ''}>
+                                ❌ Rejected
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            <strong>{trip.employeeName || '—'}</strong>
+                            {trip.employeeEmail && trip.employeeName !== trip.employeeEmail && (
+                              <div style={{ fontSize: '0.78em', color: '#6b7280' }}>{trip.employeeEmail}</div>
+                            )}
+                          </td>
+                          <td>{trip.from} → {trip.to}</td>
+                          <td>{trip.miles?.toFixed(1) || '0'}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 600 }}>£{(trip.amount || 0).toFixed(2)}</td>
+                          <td style={{ fontSize: '0.85em' }}>
+                            {trip.date ? new Date(trip.date).toLocaleDateString('en-GB') : '—'}
+                          </td>
+                          <td style={{ fontSize: '0.85em', color: '#6b7280' }}>
+                            {trip.approvedAt ? new Date(trip.approvedAt).toLocaleDateString('en-GB') : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* ── View Member Modal ── */}
       {viewingMember && (
         <div className="modal-overlay" onClick={() => setViewingMember(null)}>
@@ -372,7 +643,7 @@ export default function TeamManagement() {
 
             <div className="modal-header">
               <div>
-                <h3 style={{ margin: 0 }}>{viewingMember.displayName || viewingMember.email}</h3>
+                <h3 style={{ margin: 0 }}>{memberName(viewingMember)}</h3>
                 <div style={{ fontSize: '0.78em', color: '#888', marginTop: '0.15rem' }}>
                   {(() => {
                     const ss = STATUS_STYLES[viewingMember.status] || STATUS_STYLES.Invited;
@@ -412,10 +683,10 @@ export default function TeamManagement() {
                   <span style={{ color: '#9ca3af' }}>Accepted</span><br/>
                   <strong>{viewingMember.acceptedAt ? new Date(viewingMember.acceptedAt).toLocaleDateString('en-GB') : 'Not yet'}</strong>
                 </div>
-                {viewingMember.employeeId && (
+                {viewingMember.employeeNumber && (
                   <div>
-                    <span style={{ color: '#9ca3af' }}>Linked Employee</span><br/>
-                    <strong>Employee #{viewingMember.employeeId}</strong>
+                    <span style={{ color: '#9ca3af' }}>Employee Number</span><br/>
+                    <strong>{viewingMember.employeeNumber}</strong>
                   </div>
                 )}
                 {viewingMember.clerkUserId && (

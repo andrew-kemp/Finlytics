@@ -44,6 +44,8 @@ namespace FinanceHubFunctions.Data
         public DbSet<ExpenseAuditEvent> ExpenseAuditEvents { get; set; }
         public DbSet<CreditNote> CreditNotes { get; set; }
         public DbSet<TeamMember> TeamMembers { get; set; }
+        public DbSet<Accountant> Accountants { get; set; }
+        public DbSet<CompanyAccountant> CompanyAccountants { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -804,6 +806,33 @@ namespace FinanceHubFunctions.Data
                 entity.HasIndex(e => e.CompanyId);
                 entity.HasIndex(e => e.InviteToken);
                 entity.HasIndex(e => new { e.Email, e.CompanyId }).IsUnique();
+            });
+
+            // Accountants
+            modelBuilder.Entity<Accountant>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Email).IsRequired().HasMaxLength(256);
+                entity.Property(e => e.ClerkUserId).HasMaxLength(200);
+                entity.Property(e => e.Name).IsRequired().HasMaxLength(200).HasDefaultValue("");
+                entity.Property(e => e.FirmName).HasMaxLength(300);
+                entity.Property(e => e.Status).IsRequired().HasMaxLength(50).HasDefaultValue("Invited");
+                entity.HasIndex(e => e.ClerkUserId);
+                entity.HasIndex(e => e.Email).IsUnique();
+            });
+
+            // CompanyAccountants (junction: Company ↔ Accountant)
+            modelBuilder.Entity<CompanyAccountant>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.AccessLevel).IsRequired().HasMaxLength(50).HasDefaultValue("ReadOnly");
+                entity.Property(e => e.InviteToken).HasMaxLength(200);
+                entity.Property(e => e.InvitedBy).HasMaxLength(200);
+                entity.Property(e => e.Status).IsRequired().HasMaxLength(50).HasDefaultValue("Invited");
+                entity.HasIndex(e => e.AccountantId);
+                entity.HasIndex(e => e.CompanyId);
+                entity.HasIndex(e => e.InviteToken);
+                entity.HasIndex(e => new { e.CompanyId, e.AccountantId }).IsUnique();
             });
         }
     }

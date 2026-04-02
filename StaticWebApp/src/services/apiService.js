@@ -228,10 +228,11 @@ export async function deleteSupplier(id) {
     return result;
 }
 
-export async function getExpenses() {
+export async function getExpenses({ companyOnly = false } = {}) {
     console.log('getExpenses: Fetching expenses from API...');
     const headers = await getAuthHeaders();
-    const response = await fetch(`${API_BASE}/expenses`, { headers });
+    const qs = companyOnly ? '?companyOnly=true' : '';
+    const response = await fetch(`${API_BASE}/expenses${qs}`, { headers });
     console.log('getExpenses: Response status:', response.status);
     
     if (!response.ok) {
@@ -1005,6 +1006,13 @@ export async function getTeamApprovals() {
     return response.json();
 }
 
+export async function getTeamApprovalHistory() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/team/approvals/history`, { headers });
+    if (!response.ok) throw new Error('Failed to load approval history');
+    return response.json();
+}
+
 export async function approveItem(type, id) {
     const headers = await getAuthHeaders();
     const response = await fetch(`${API_BASE}/team/approvals/${type}/${id}/approve`, {
@@ -1023,6 +1031,17 @@ export async function rejectItem(type, id, reason) {
         body: JSON.stringify({ reason })
     });
     if (!response.ok) throw new Error(`Failed to reject ${type}`);
+    return response.json();
+}
+
+export async function batchApproveItems(expenseIds = [], mileageIds = []) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/team/approvals/batch`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ expenseIds, mileageIds })
+    });
+    if (!response.ok) throw new Error('Failed to batch approve');
     return response.json();
 }
 

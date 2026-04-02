@@ -98,7 +98,26 @@ namespace FinanceHubFunctions.Functions
                 if (_expenseRepository != null)
                 {
                     var dbExpenses = await _expenseRepository.GetAllAsync();
-                    expenses = dbExpenses.ToList();
+
+                    // ?companyOnly=true — only company-card expenses (excludes all employee claims)
+                    // Default — company expenses + approved employee claims (for company ledger / CT calc)
+                    // Always excludes pending/draft/rejected employee claims
+                    var queryParams = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+                    var companyOnly = string.Equals(queryParams["companyOnly"], "true", StringComparison.OrdinalIgnoreCase);
+
+                    if (companyOnly)
+                    {
+                        expenses = dbExpenses
+                            .Where(e => e.SubmittedByTeamMemberId == null)
+                            .ToList();
+                    }
+                    else
+                    {
+                        expenses = dbExpenses
+                            .Where(e => e.SubmittedByTeamMemberId == null
+                                || e.ApprovalStatus == "Approved")
+                            .ToList();
+                    }
                 }
                 else
                 {

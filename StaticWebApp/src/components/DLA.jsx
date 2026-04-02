@@ -1548,6 +1548,11 @@ const DLA = ({ openNew }) => {
 
     const filterTotalNet = filtered.reduce((s, e) => s + (e.amountNet || 0), 0);
     const filterTotalVat = filtered.reduce((s, e) => s + (e.vatAmount || 0), 0);
+    // VAT reclaimable: exclude NonCT items (no CT relief = no VAT relief)
+    // The gross amount still counts in the DLA total — only VAT reclaim is blocked
+    const filterVatReclaimable = filtered
+        .filter(e => e.ctTag !== 'NonCT')
+        .reduce((s, e) => s + (e.vatAmount || 0), 0);
     const filterTotalGross = filtered.reduce((s, e) => s + (e.amountGross || 0), 0);
     const filterTotalPaid = filtered.reduce((s, e) => s + (e.amountPaid || 0), 0);
     const filterTotalOutstanding = filtered.reduce((s, e) => s + (e.remainingBalance || 0), 0);
@@ -3297,7 +3302,13 @@ const DLA = ({ openNew }) => {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '0.5rem', marginBottom: '1rem', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.04)', borderRadius: '8px', fontSize: '0.82rem' }}>
                 <div><span style={{ opacity: 0.6, display: 'block', marginBottom: '0.15rem' }}>Gross</span><strong>{formatCurrency(filterTotalGross)}</strong></div>
                 <div><span style={{ opacity: 0.6, display: 'block', marginBottom: '0.15rem' }}>Net</span><strong>{formatCurrency(filterTotalNet)}</strong></div>
-                <div><span style={{ opacity: 0.6, display: 'block', marginBottom: '0.15rem' }}>VAT</span><strong>{formatCurrency(filterTotalVat)}</strong></div>
+                <div title={filterVatReclaimable !== filterTotalVat ? `Total VAT: ${formatCurrency(filterTotalVat)} — only reclaimable portion shown (NonCT items excluded)` : undefined}>
+                    <span style={{ opacity: 0.6, display: 'block', marginBottom: '0.15rem' }}>VAT (reclaimable)</span>
+                    <strong>{formatCurrency(filterVatReclaimable)}</strong>
+                    {filterVatReclaimable !== filterTotalVat && (
+                        <span style={{ display: 'block', fontSize: '0.72rem', opacity: 0.5 }}>of {formatCurrency(filterTotalVat)} total</span>
+                    )}
+                </div>
                 <div><span style={{ opacity: 0.6, display: 'block', marginBottom: '0.15rem' }}>Paid back</span><strong style={{ color: '#16a34a' }}>{formatCurrency(filterTotalPaid)}</strong></div>
                 <div><span style={{ opacity: 0.6, display: 'block', marginBottom: '0.15rem' }}>Outstanding</span><strong style={{ color: filterTotalOutstanding > 0 ? '#d97706' : '#16a34a' }}>{formatCurrency(filterTotalOutstanding)}</strong></div>
                 {filterCtRelief > 0 && (

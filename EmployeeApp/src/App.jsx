@@ -30,7 +30,7 @@ function LandingPage() {
     <div className="landing">
       <div className="landing-card">
         <div className="landing-logo">
-          <span className="logo-icon">💰</span>
+          <img src="/Finlytics-icon.png" alt="Finlytics" style={{ width: 64, height: 64, objectFit: 'contain', marginBottom: 8 }} />
           <h1>Finlytics <span className="subtitle">Expenses</span></h1>
         </div>
         <p className="landing-desc">
@@ -58,7 +58,10 @@ function AppShell() {
           <button className="menu-toggle" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
             ☰
           </button>
-          <span className="header-logo">💰 Finlytics Expenses</span>
+          <div className="header-logo">
+            <img src="/Finlytics-icon.png" alt="Finlytics" className="header-logo-icon" />
+            <span>Finlytics <span className="header-logo-sub">Expenses</span></span>
+          </div>
         </div>
         <nav className={`header-nav ${mobileMenuOpen ? 'open' : ''}`}>
           <NavLink to="/" end onClick={() => setMobileMenuOpen(false)}>Dashboard</NavLink>

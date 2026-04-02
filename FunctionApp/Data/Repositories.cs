@@ -1739,4 +1739,91 @@ namespace FinanceHubFunctions.Data
             }
         }
     }
+
+    public class AccountantRepository : IAccountantRepository
+    {
+        private readonly FinanceHubDbContext _context;
+        public AccountantRepository(FinanceHubDbContext context) => _context = context;
+
+        public async Task<IEnumerable<Accountant>> GetAllAsync()
+            => await _context.Accountants.ToListAsync();
+
+        public async Task<Accountant?> GetByIdAsync(int id)
+            => await _context.Accountants.FindAsync(id);
+
+        public async Task<Accountant?> GetByEmailAsync(string email)
+            => await _context.Accountants.FirstOrDefaultAsync(a => a.Email == email);
+
+        public async Task<Accountant?> GetByClerkUserIdAsync(string clerkUserId)
+            => await _context.Accountants.FirstOrDefaultAsync(a => a.ClerkUserId == clerkUserId);
+
+        public async Task<Accountant> CreateAsync(Accountant accountant)
+        {
+            _context.Accountants.Add(accountant);
+            await _context.SaveChangesAsync();
+            return accountant;
+        }
+
+        public async Task<Accountant> UpdateAsync(Accountant accountant)
+        {
+            _context.Accountants.Update(accountant);
+            await _context.SaveChangesAsync();
+            return accountant;
+        }
+
+        public async Task DeleteAsync(int id)
+        {
+            var a = await _context.Accountants.FindAsync(id);
+            if (a != null)
+            {
+                _context.Accountants.Remove(a);
+                await _context.SaveChangesAsync();
+            }
+        }
+    }
+
+    public class CompanyAccountantRepository : ICompanyAccountantRepository
+    {
+        private readonly FinanceHubDbContext _context;
+        public CompanyAccountantRepository(FinanceHubDbContext context) => _context = context;
+
+        public async Task<IEnumerable<CompanyAccountant>> GetByCompanyIdAsync(int companyId)
+            => await _context.CompanyAccountants.Where(ca => ca.CompanyId == companyId).ToListAsync();
+
+        public async Task<IEnumerable<CompanyAccountant>> GetByAccountantIdAsync(int accountantId)
+            => await _context.CompanyAccountants.Where(ca => ca.AccountantId == accountantId).ToListAsync();
+
+        public async Task<CompanyAccountant?> GetByIdAsync(int id)
+            => await _context.CompanyAccountants.FindAsync(id);
+
+        public async Task<CompanyAccountant?> GetByInviteTokenAsync(string token)
+            => await _context.CompanyAccountants.FirstOrDefaultAsync(ca => ca.InviteToken == token);
+
+        public async Task<CompanyAccountant?> GetByCompanyAndAccountantAsync(int companyId, int accountantId)
+            => await _context.CompanyAccountants.FirstOrDefaultAsync(ca => ca.CompanyId == companyId && ca.AccountantId == accountantId);
+
+        public async Task<CompanyAccountant> CreateAsync(CompanyAccountant ca)
+        {
+            _context.CompanyAccountants.Add(ca);
+            await _context.SaveChangesAsync();
+            return ca;
+        }
+
+        public async Task<CompanyAccountant> UpdateAsync(CompanyAccountant ca)
+        {
+            _context.CompanyAccountants.Update(ca);
+            await _context.SaveChangesAsync();
+            return ca;
+        }
+
+        public async Task DeleteAsync(int id)
+        {
+            var ca = await _context.CompanyAccountants.FindAsync(id);
+            if (ca != null)
+            {
+                _context.CompanyAccountants.Remove(ca);
+                await _context.SaveChangesAsync();
+            }
+        }
+    }
 }
