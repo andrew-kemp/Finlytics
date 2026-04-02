@@ -63,6 +63,30 @@ var host = new HostBuilder()
                 {
                     Console.WriteLine($"Monzo OAuth credentials not found in Key Vault (optional): {monzoEx.Message}");
                 }
+
+                // Load TrueLayer secrets into environment variables
+                try
+                {
+                    var tlClientId = Task.Run(() => secretClient.GetSecretAsync("TrueLayerClientId")).GetAwaiter().GetResult();
+                    Environment.SetEnvironmentVariable("TrueLayerClientId", tlClientId.Value.Value);
+                    var tlClientSecret = Task.Run(() => secretClient.GetSecretAsync("TrueLayerClientSecret")).GetAwaiter().GetResult();
+                    Environment.SetEnvironmentVariable("TrueLayerClientSecret", tlClientSecret.Value.Value);
+                }
+                catch (Exception tlEx)
+                {
+                    Console.WriteLine($"TrueLayer OAuth credentials not found in Key Vault (optional): {tlEx.Message}");
+                }
+                try
+                {
+                    var tlAccessToken = Task.Run(() => secretClient.GetSecretAsync("TrueLayerAccessToken")).GetAwaiter().GetResult();
+                    Environment.SetEnvironmentVariable("TrueLayerAccessToken", tlAccessToken.Value.Value);
+                    var tlRefreshToken = Task.Run(() => secretClient.GetSecretAsync("TrueLayerRefreshToken")).GetAwaiter().GetResult();
+                    Environment.SetEnvironmentVariable("TrueLayerRefreshToken", tlRefreshToken.Value.Value);
+                }
+                catch (Exception tlEx)
+                {
+                    Console.WriteLine($"TrueLayer tokens not found in Key Vault (optional): {tlEx.Message}");
+                }
             }
             catch (Exception ex)
             {
@@ -120,6 +144,11 @@ var host = new HostBuilder()
             services.AddScoped<ITeamMemberRepository, TeamMemberRepository>();
             services.AddScoped<IAccountantRepository, AccountantRepository>();
             services.AddScoped<ICompanyAccountantRepository, CompanyAccountantRepository>();
+            services.AddScoped<IRecurringInvoiceTemplateRepository, RecurringInvoiceTemplateRepository>();
+            services.AddScoped<ICategorizationRuleRepository, CategorizationRuleRepository>();
+            services.AddScoped<IGoCardlessMandateRepository, GoCardlessMandateRepository>();
+            services.AddScoped<IGoCardlessPaymentRepository, GoCardlessPaymentRepository>();
+            services.AddScoped<IBillRepository, BillRepository>();
         }
         else
         {

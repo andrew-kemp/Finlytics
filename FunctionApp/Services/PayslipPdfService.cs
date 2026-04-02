@@ -30,8 +30,16 @@ namespace FinanceHubFunctions.Services
             {
                 try
                 {
-                    var (bytes, _) = await _blobStorageService.GetLogoAsync(company.Id);
-                    logoBytes = bytes;
+                    if (!string.IsNullOrWhiteSpace(company.DocumentLogoUrl))
+                    {
+                        var (bytes, _) = await _blobStorageService.GetLogoBytesFromUrlAsync(company.DocumentLogoUrl);
+                        logoBytes = bytes;
+                    }
+                    if (logoBytes == null)
+                    {
+                        var (bytes, _) = await _blobStorageService.GetLogoAsync(company.Id);
+                        logoBytes = bytes;
+                    }
                 }
                 catch { /* Continue without logo */ }
             }

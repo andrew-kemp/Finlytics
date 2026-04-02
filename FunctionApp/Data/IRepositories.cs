@@ -318,4 +318,59 @@ namespace FinanceHubFunctions.Data
         Task<CompanyAccountant> UpdateAsync(CompanyAccountant ca);
         Task DeleteAsync(int id);
     }
+
+    public interface IRecurringInvoiceTemplateRepository
+    {
+        Task<IEnumerable<RecurringInvoiceTemplate>> GetAllAsync();
+        Task<IEnumerable<RecurringInvoiceTemplate>> GetActiveAsync();
+        Task<IEnumerable<RecurringInvoiceTemplate>> GetDueTemplatesAsync();
+        Task<RecurringInvoiceTemplate?> GetByIdAsync(int id);
+        Task<RecurringInvoiceTemplate> CreateAsync(RecurringInvoiceTemplate template);
+        Task<RecurringInvoiceTemplate> UpdateAsync(RecurringInvoiceTemplate template);
+        Task DeleteAsync(int id);
+    }
+
+    public interface ICategorizationRuleRepository
+    {
+        Task<IEnumerable<CategorizationRule>> GetAllAsync();
+        Task<IEnumerable<CategorizationRule>> GetActiveAsync();
+        Task<CategorizationRule?> GetByIdAsync(int id);
+        Task<CategorizationRule> CreateAsync(CategorizationRule rule);
+        Task<CategorizationRule> UpdateAsync(CategorizationRule rule);
+        Task DeleteAsync(int id);
+    }
+
+    public interface IGoCardlessMandateRepository
+    {
+        Task<IEnumerable<GoCardlessMandate>> GetAllAsync();
+        Task<GoCardlessMandate?> GetByIdAsync(int id);
+        Task<IEnumerable<GoCardlessMandate>> GetByCustomerIdAsync(string customerId);
+        Task<GoCardlessMandate?> GetByGoCardlessMandateIdAsync(string goCardlessMandateId);
+        Task<GoCardlessMandate> CreateAsync(GoCardlessMandate mandate);
+        Task<GoCardlessMandate> UpdateAsync(GoCardlessMandate mandate);
+    }
+
+    public interface IGoCardlessPaymentRepository
+    {
+        Task<IEnumerable<GoCardlessPayment>> GetAllAsync();
+        Task<GoCardlessPayment?> GetByIdAsync(int id);
+        Task<GoCardlessPayment?> GetByGoCardlessPaymentIdAsync(string goCardlessPaymentId);
+        Task<IEnumerable<GoCardlessPayment>> GetByInvoiceIdAsync(int invoiceId);
+        Task<GoCardlessPayment> CreateAsync(GoCardlessPayment payment);
+        Task<GoCardlessPayment> UpdateAsync(GoCardlessPayment payment);
+    }
+
+    public interface IBillRepository
+    {
+        Task<IEnumerable<Bill>> GetAllAsync();
+        Task<Bill?> GetByIdAsync(int id);
+        Task<Bill?> GetByBillNumberAsync(string billNumber);
+        Task<IEnumerable<Bill>> GetByStatusAsync(string status);
+        Task<IEnumerable<Bill>> GetBySupplierIdAsync(string supplierId);
+        Task<IEnumerable<Bill>> GetOverdueAsync();
+        Task<Bill> CreateAsync(Bill bill);
+        Task<Bill> UpdateAsync(Bill bill);
+        Task DeleteAsync(int id);
+        Task<string> GenerateNextBillNumberAsync();
+    }
 }

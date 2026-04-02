@@ -278,7 +278,9 @@ export async function getExpenses({ companyOnly = false } = {}) {
             ctTag: expense.ctTag || expense.CtTag,
             notes: expense.notes || expense.Notes,
             hasMissingReceiptDeclaration: expense.hasMissingReceiptDeclaration || expense.HasMissingReceiptDeclaration || false,
-            missingReceiptDeclarationRef: expense.missingReceiptDeclarationRef || expense.MissingReceiptDeclarationRef || null
+            missingReceiptDeclarationRef: expense.missingReceiptDeclarationRef || expense.MissingReceiptDeclarationRef || null,
+            approvalStatus: expense.approvalStatus || expense.ApprovalStatus || null,
+            submittedByTeamMemberId: expense.submittedByTeamMemberId ?? expense.SubmittedByTeamMemberId ?? null
         };
     }) : data;
     
@@ -491,6 +493,8 @@ export async function updateCompanySettings(settings) {
         InvoiceTermsDays: settings.invoiceTermsDays,
         InvoiceFooterText: settings.invoiceFooterText,
         LogoUrl: settings.logoUrl,
+        DocumentLogoUrl: settings.documentLogoUrl || null,
+        EmailLogoUrl: settings.emailLogoUrl || null,
         CompanyInceptionDate: settings.companyInceptionDate ? new Date(settings.companyInceptionDate).toISOString() : null,
         FYStartMonth: settings.fyStartMonth ? parseInt(settings.fyStartMonth) : null,
         FYStartDay: settings.fyStartDay ? parseInt(settings.fyStartDay) : null,
@@ -2322,6 +2326,45 @@ export async function voidDlaDeclaration(dlaId, reason) {
     return response.json();
 }
 
+// ── Accountant Management ──────────────────────────────────────────────────
+
+export async function inviteAccountant({ email, name, firmName }) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/accountant/invite`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, name, firmName })
+    });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to invite accountant');
+    }
+    return response.json();
+}
+
+export async function getLinkedAccountants() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/accountant/linked`, { headers });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to fetch linked accountants');
+    }
+    return response.json();
+}
+
+export async function revokeAccountant(linkId) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/accountant/${linkId}/revoke`, {
+        method: 'DELETE',
+        headers
+    });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to revoke accountant access');
+    }
+    return response.json();
+}
+
 export function getDlaDeclarationPdfUrl(dlaId) {
     return `${API_BASE}/dla/${dlaId}/declaration/pdf`;
 }
@@ -2355,6 +2398,228 @@ export async function patchDlaNoReceiptReason(dlaId, reason) {
 }
 
 // ─── Credit Notes ────────────────────────────────────────────────────────────
+
+// ─── Recurring Invoice Templates ─────────────────────────────────────────────
+
+export async function getRecurringInvoiceTemplates() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/recurring-invoices`, { headers });
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(error.error || 'Failed to fetch recurring invoice templates');
+    }
+    return response.json();
+}
+
+export async function getRecurringInvoiceTemplate(id) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/recurring-invoices/${id}`, { headers });
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(error.error || 'Failed to fetch recurring invoice template');
+    }
+    return response.json();
+}
+
+export async function createRecurringInvoiceTemplate(template) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/recurring-invoices`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(template)
+    });
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(error.error || 'Failed to create recurring invoice template');
+    }
+    return response.json();
+}
+
+export async function updateRecurringInvoiceTemplate(id, template) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/recurring-invoices/${id}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(template)
+    });
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(error.error || 'Failed to update recurring invoice template');
+    }
+    return response.json();
+}
+
+export async function deleteRecurringInvoiceTemplate(id) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/recurring-invoices/${id}`, {
+        method: 'DELETE',
+        headers
+    });
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(error.error || 'Failed to delete recurring invoice template');
+    }
+    return { success: true };
+}
+
+// ─── Categorization Rules ────────────────────────────────────────────────────
+
+export async function getCategorizationRules() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/categorization-rules`, { headers });
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(error.error || 'Failed to fetch categorization rules');
+    }
+    return response.json();
+}
+
+export async function createCategorizationRule(rule) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/categorization-rules`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(rule)
+    });
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(error.error || 'Failed to create categorization rule');
+    }
+    return response.json();
+}
+
+export async function updateCategorizationRule(id, rule) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/categorization-rules/${id}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(rule)
+    });
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(error.error || 'Failed to update categorization rule');
+    }
+    return response.json();
+}
+
+export async function deleteCategorizationRule(id) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/categorization-rules/${id}`, {
+        method: 'DELETE',
+        headers
+    });
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(error.error || 'Failed to delete categorization rule');
+    }
+    return { success: true };
+}
+
+// ─── GoCardless ──────────────────────────────────────────────────────────────
+
+export async function getGoCardlessInstitutions(country = 'GB') {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/gocardless/institutions?country=${country}`, { headers });
+    if (!response.ok) throw new Error('Failed to load institutions');
+    return response.json();
+}
+
+export async function connectBankGoCardless(institutionId, bankAccountId) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/gocardless/connect-bank`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ institutionId, bankAccountId })
+    });
+    if (!response.ok) throw new Error('Failed to initiate bank connection');
+    return response.json();
+}
+
+export async function syncGoCardlessTransactions(bankAccountId) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/gocardless/sync`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ bankAccountId })
+    });
+    if (!response.ok) throw new Error('Failed to sync transactions');
+    return response.json();
+}
+
+export async function getGoCardlessBankStatus(bankAccountId) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/gocardless/bank-status?bankAccountId=${bankAccountId}`, { headers });
+    if (!response.ok) throw new Error('Failed to get bank status');
+    return response.json();
+}
+
+export async function createGoCardlessMandate(customerId) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/gocardless/mandates/create`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ customerId })
+    });
+    if (!response.ok) throw new Error('Failed to create mandate');
+    return response.json();
+}
+
+export async function getGoCardlessMandates() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/gocardless/mandates`, { headers });
+    if (!response.ok) throw new Error('Failed to load mandates');
+    return response.json();
+}
+
+export async function getGoCardlessMandateStatus(customerId) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/gocardless/mandates/${customerId}/status`, { headers });
+    if (!response.ok) throw new Error('Failed to get mandate status');
+    return response.json();
+}
+
+export async function collectGoCardlessPayment(invoiceId) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/gocardless/payments/collect`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ invoiceId })
+    });
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(error.error || 'Failed to collect payment');
+    }
+    return response.json();
+}
+
+export async function createGoCardlessPaymentLink(invoiceId) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/gocardless/payments/create-link`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ invoiceId })
+    });
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(error.error || 'Failed to create payment link');
+    }
+    return response.json();
+}
+
+export async function getGoCardlessPayments() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/gocardless/payments`, { headers });
+    if (!response.ok) throw new Error('Failed to load payments');
+    return response.json();
+}
+
+export async function applyCategorizationRules() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/categorization-rules/apply`, {
+        method: 'POST',
+        headers
+    });
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(error.error || 'Failed to apply categorization rules');
+    }
+    return response.json();
+}
 
 export async function getCreditNotes() {
     const headers = await getAuthHeaders();
@@ -2531,6 +2796,173 @@ export async function syncMonzoTransactions(since = null) {
     if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         throw new Error(err.error || 'Monzo sync failed');
+    }
+    return response.json();
+}
+
+// ── TrueLayer ─────────────────────────────────────────────────────────────────
+export async function getTrueLayerStatus() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/truelayer/status`, { headers });
+    if (!response.ok) throw new Error('Failed to get TrueLayer status');
+    return response.json();
+}
+
+export async function getTrueLayerAuthUrl() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/truelayer/auth`, { headers });
+    if (!response.ok) throw new Error('Failed to get TrueLayer auth URL');
+    return response.json(); // { authUrl }
+}
+
+export async function syncTrueLayerTransactions() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/truelayer/sync`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' }
+    });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'TrueLayer sync failed');
+    }
+    return response.json();
+}
+
+export async function disconnectTrueLayer() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/truelayer/disconnect`, {
+        method: 'POST',
+        headers
+    });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to disconnect TrueLayer');
+    }
+    return response.json();
+}
+
+// ── BILLS / ACCOUNTS PAYABLE ─────────────────────────────────────────────────
+
+export async function getBills() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/bills`, { headers });
+    if (!response.ok) throw new Error('Failed to fetch bills');
+    return response.json();
+}
+
+export async function getBill(id) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/bills/${id}`, { headers });
+    if (!response.ok) throw new Error('Failed to fetch bill');
+    return response.json();
+}
+
+export async function createBill(bill) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/bills`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(bill)
+    });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to create bill');
+    }
+    return response.json();
+}
+
+export async function updateBill(id, bill) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/bills/${id}`, {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(bill)
+    });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to update bill');
+    }
+    return response.json();
+}
+
+export async function deleteBill(id) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/bills/${id}`, {
+        method: 'DELETE',
+        headers
+    });
+    if (!response.ok) throw new Error('Failed to delete bill');
+}
+
+export async function approveBill(id, approvedBy) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/bills/${id}/approve`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvedBy })
+    });
+    if (!response.ok) throw new Error('Failed to approve bill');
+    return response.json();
+}
+
+export async function payBill(id, paymentDetails) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/bills/${id}/pay`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(paymentDetails)
+    });
+    if (!response.ok) throw new Error('Failed to record payment');
+    return response.json();
+}
+
+export async function getNextBillNumber() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/bills/next-number`, { headers });
+    if (!response.ok) throw new Error('Failed to get next bill number');
+    return response.json();
+}
+
+export async function getBillsSummary() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/bills/summary`, { headers });
+    if (!response.ok) throw new Error('Failed to fetch bills summary');
+    return response.json();
+}
+
+// ── Invoice Email & Quick Invoice ──
+
+export async function sendInvoiceEmail(id, email) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/invoices/${id}/email`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(email ? { email } : {})
+    });
+    if (!response.ok) {
+        const text = await response.text().catch(() => 'Unknown error');
+        throw new Error(text || `Failed to send invoice email (HTTP ${response.status})`);
+    }
+    return response.json();
+}
+
+export async function getLineItemDescriptions() {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/lineitem-descriptions`, { headers });
+    if (!response.ok) return [];
+    return response.json();
+}
+
+export async function quickInvoice({ customerId, days, description, rate, vatRate, sendEmail }) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/invoices/quick`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId, days, description, rate, vatRate, sendEmail })
+    });
+    if (!response.ok) {
+        const text = await response.text().catch(() => 'Unknown error');
+        throw new Error(text || `Quick invoice failed (HTTP ${response.status})`);
     }
     return response.json();
 }

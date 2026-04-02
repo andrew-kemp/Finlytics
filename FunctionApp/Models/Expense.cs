@@ -27,9 +27,10 @@ namespace FinanceHubFunctions.Models
         public bool IsDLA { get; set; }
         public List<string>? Attachments { get; set; }
         public string? CtTag { get; set; } // Revenue | Capital | NonCT
-        // Trivial Benefit (HMRC s.323 — max £50, max 6 per tax year, non-cash only)
+        // Trivial Benefit (HMRC s.323 — max £50, max 6 per recipient per tax year, non-cash only)
         public bool IsTrivialBenefit { get; set; } = false;
         public string? TrivialBenefitType { get; set; } // e.g. "Gift Card (Amazon)", "Gift Card (Other)", "Other"
+        public string? TrivialBenefitRecipient { get; set; } // Employee or director name — limit is 6 per recipient per tax year
         // Recurring expense
         public bool IsRecurring { get; set; } = false;
         public string? RecurringFrequency { get; set; } // "Monthly" | "Quarterly" | "Annual"

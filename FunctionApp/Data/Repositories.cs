@@ -1826,4 +1826,346 @@ namespace FinanceHubFunctions.Data
             }
         }
     }
+
+    public class RecurringInvoiceTemplateRepository : IRecurringInvoiceTemplateRepository
+    {
+        private readonly FinanceHubDbContext _context;
+
+        public RecurringInvoiceTemplateRepository(FinanceHubDbContext context)
+        {
+            _context = context;
+        }
+
+        public async Task<IEnumerable<RecurringInvoiceTemplate>> GetAllAsync()
+        {
+            return await _context.RecurringInvoiceTemplates
+                .OrderByDescending(t => t.CreatedDate)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<RecurringInvoiceTemplate>> GetActiveAsync()
+        {
+            return await _context.RecurringInvoiceTemplates
+                .Where(t => t.IsActive)
+                .OrderBy(t => t.NextRunDate)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<RecurringInvoiceTemplate>> GetDueTemplatesAsync()
+        {
+            var today = DateTime.UtcNow.Date;
+            return await _context.RecurringInvoiceTemplates
+                .Where(t => t.IsActive && t.NextRunDate.HasValue && t.NextRunDate.Value.Date <= today)
+                .ToListAsync();
+        }
+
+        public async Task<RecurringInvoiceTemplate?> GetByIdAsync(int id)
+        {
+            return await _context.RecurringInvoiceTemplates.FindAsync(id);
+        }
+
+        public async Task<RecurringInvoiceTemplate> CreateAsync(RecurringInvoiceTemplate template)
+        {
+            template.CreatedDate = DateTime.UtcNow;
+            template.ModifiedDate = DateTime.UtcNow;
+            _context.RecurringInvoiceTemplates.Add(template);
+            await _context.SaveChangesAsync();
+            return template;
+        }
+
+        public async Task<RecurringInvoiceTemplate> UpdateAsync(RecurringInvoiceTemplate template)
+        {
+            var existing = await _context.RecurringInvoiceTemplates.FindAsync(template.Id);
+            if (existing != null)
+            {
+                _context.Entry(existing).CurrentValues.SetValues(template);
+                existing.DefaultLineItems = template.DefaultLineItems;
+                _context.Entry(existing).Property(e => e.DefaultLineItems).IsModified = true;
+                existing.ModifiedDate = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                return existing;
+            }
+
+            template.ModifiedDate = DateTime.UtcNow;
+            _context.RecurringInvoiceTemplates.Update(template);
+            await _context.SaveChangesAsync();
+            return template;
+        }
+
+        public async Task DeleteAsync(int id)
+        {
+            var template = await GetByIdAsync(id);
+            if (template != null)
+            {
+                _context.RecurringInvoiceTemplates.Remove(template);
+                await _context.SaveChangesAsync();
+            }
+        }
+    }
+
+    public class CategorizationRuleRepository : ICategorizationRuleRepository
+    {
+        private readonly FinanceHubDbContext _context;
+
+        public CategorizationRuleRepository(FinanceHubDbContext context)
+        {
+            _context = context;
+        }
+
+        public async Task<IEnumerable<CategorizationRule>> GetAllAsync()
+        {
+            return await _context.CategorizationRules
+                .OrderBy(r => r.Priority)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<CategorizationRule>> GetActiveAsync()
+        {
+            return await _context.CategorizationRules
+                .Where(r => r.IsActive)
+                .OrderBy(r => r.Priority)
+                .ToListAsync();
+        }
+
+        public async Task<CategorizationRule?> GetByIdAsync(int id)
+        {
+            return await _context.CategorizationRules.FindAsync(id);
+        }
+
+        public async Task<CategorizationRule> CreateAsync(CategorizationRule rule)
+        {
+            rule.CreatedDate = DateTime.UtcNow;
+            rule.ModifiedDate = DateTime.UtcNow;
+            _context.CategorizationRules.Add(rule);
+            await _context.SaveChangesAsync();
+            return rule;
+        }
+
+        public async Task<CategorizationRule> UpdateAsync(CategorizationRule rule)
+        {
+            rule.ModifiedDate = DateTime.UtcNow;
+            _context.CategorizationRules.Update(rule);
+            await _context.SaveChangesAsync();
+            return rule;
+        }
+
+        public async Task DeleteAsync(int id)
+        {
+            var rule = await GetByIdAsync(id);
+            if (rule != null)
+            {
+                _context.CategorizationRules.Remove(rule);
+                await _context.SaveChangesAsync();
+            }
+        }
+    }
+
+    public class GoCardlessMandateRepository : IGoCardlessMandateRepository
+    {
+        private readonly FinanceHubDbContext _context;
+
+        public GoCardlessMandateRepository(FinanceHubDbContext context)
+        {
+            _context = context;
+        }
+
+        public async Task<IEnumerable<GoCardlessMandate>> GetAllAsync()
+        {
+            return await _context.GoCardlessMandates
+                .OrderByDescending(m => m.CreatedDate)
+                .ToListAsync();
+        }
+
+        public async Task<GoCardlessMandate?> GetByIdAsync(int id)
+        {
+            return await _context.GoCardlessMandates.FindAsync(id);
+        }
+
+        public async Task<IEnumerable<GoCardlessMandate>> GetByCustomerIdAsync(string customerId)
+        {
+            return await _context.GoCardlessMandates
+                .Where(m => m.CustomerId == customerId)
+                .OrderByDescending(m => m.CreatedDate)
+                .ToListAsync();
+        }
+
+        public async Task<GoCardlessMandate?> GetByGoCardlessMandateIdAsync(string goCardlessMandateId)
+        {
+            return await _context.GoCardlessMandates
+                .FirstOrDefaultAsync(m => m.GoCardlessMandateId == goCardlessMandateId);
+        }
+
+        public async Task<GoCardlessMandate> CreateAsync(GoCardlessMandate mandate)
+        {
+            mandate.CreatedDate = DateTime.UtcNow;
+            _context.GoCardlessMandates.Add(mandate);
+            await _context.SaveChangesAsync();
+            return mandate;
+        }
+
+        public async Task<GoCardlessMandate> UpdateAsync(GoCardlessMandate mandate)
+        {
+            _context.GoCardlessMandates.Update(mandate);
+            await _context.SaveChangesAsync();
+            return mandate;
+        }
+    }
+
+    public class GoCardlessPaymentRepository : IGoCardlessPaymentRepository
+    {
+        private readonly FinanceHubDbContext _context;
+
+        public GoCardlessPaymentRepository(FinanceHubDbContext context)
+        {
+            _context = context;
+        }
+
+        public async Task<IEnumerable<GoCardlessPayment>> GetAllAsync()
+        {
+            return await _context.GoCardlessPayments
+                .OrderByDescending(p => p.CreatedDate)
+                .ToListAsync();
+        }
+
+        public async Task<GoCardlessPayment?> GetByIdAsync(int id)
+        {
+            return await _context.GoCardlessPayments.FindAsync(id);
+        }
+
+        public async Task<GoCardlessPayment?> GetByGoCardlessPaymentIdAsync(string goCardlessPaymentId)
+        {
+            return await _context.GoCardlessPayments
+                .FirstOrDefaultAsync(p => p.GoCardlessPaymentId == goCardlessPaymentId);
+        }
+
+        public async Task<IEnumerable<GoCardlessPayment>> GetByInvoiceIdAsync(int invoiceId)
+        {
+            return await _context.GoCardlessPayments
+                .Where(p => p.InvoiceId == invoiceId)
+                .OrderByDescending(p => p.CreatedDate)
+                .ToListAsync();
+        }
+
+        public async Task<GoCardlessPayment> CreateAsync(GoCardlessPayment payment)
+        {
+            payment.CreatedDate = DateTime.UtcNow;
+            _context.GoCardlessPayments.Add(payment);
+            await _context.SaveChangesAsync();
+            return payment;
+        }
+
+        public async Task<GoCardlessPayment> UpdateAsync(GoCardlessPayment payment)
+        {
+            _context.GoCardlessPayments.Update(payment);
+            await _context.SaveChangesAsync();
+            return payment;
+        }
+    }
+
+    public class BillRepository : IBillRepository
+    {
+        private readonly FinanceHubDbContext _context;
+
+        public BillRepository(FinanceHubDbContext context)
+        {
+            _context = context;
+        }
+
+        public async Task<IEnumerable<Bill>> GetAllAsync()
+        {
+            return await _context.Bills.OrderByDescending(b => b.DateIssued).ToListAsync();
+        }
+
+        public async Task<Bill?> GetByIdAsync(int id)
+        {
+            return await _context.Bills.FindAsync(id);
+        }
+
+        public async Task<Bill?> GetByBillNumberAsync(string billNumber)
+        {
+            return await _context.Bills.FirstOrDefaultAsync(b => b.BillNumber == billNumber);
+        }
+
+        public async Task<IEnumerable<Bill>> GetByStatusAsync(string status)
+        {
+            return await _context.Bills
+                .Where(b => b.Status == status)
+                .OrderByDescending(b => b.DateIssued)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<Bill>> GetBySupplierIdAsync(string supplierId)
+        {
+            return await _context.Bills
+                .Where(b => b.SupplierId == supplierId)
+                .OrderByDescending(b => b.DateIssued)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<Bill>> GetOverdueAsync()
+        {
+            var today = DateTime.UtcNow.Date;
+            return await _context.Bills
+                .Where(b => b.Status != "Paid" && b.Status != "Cancelled" && b.Status != "Draft"
+                    && b.DueDate.HasValue && b.DueDate.Value.Date < today)
+                .OrderBy(b => b.DueDate)
+                .ToListAsync();
+        }
+
+        public async Task<Bill> CreateAsync(Bill bill)
+        {
+            _context.Bills.Add(bill);
+            await _context.SaveChangesAsync();
+            return bill;
+        }
+
+        public async Task<Bill> UpdateAsync(Bill bill)
+        {
+            var existing = await _context.Bills.FindAsync(bill.Id);
+            if (existing != null)
+            {
+                _context.Entry(existing).CurrentValues.SetValues(bill);
+                existing.LineItems = bill.LineItems;
+                existing.Attachments = bill.Attachments;
+                _context.Entry(existing).Property(e => e.LineItems).IsModified = true;
+                _context.Entry(existing).Property(e => e.Attachments).IsModified = true;
+                await _context.SaveChangesAsync();
+                return existing;
+            }
+
+            _context.Bills.Update(bill);
+            await _context.SaveChangesAsync();
+            return bill;
+        }
+
+        public async Task DeleteAsync(int id)
+        {
+            var bill = await GetByIdAsync(id);
+            if (bill != null)
+            {
+                _context.Bills.Remove(bill);
+                await _context.SaveChangesAsync();
+            }
+        }
+
+        public async Task<string> GenerateNextBillNumberAsync()
+        {
+            var year = DateTime.UtcNow.Year;
+            var prefix = $"BILL-{year}-";
+            var lastBill = await _context.Bills
+                .Where(b => b.BillNumber.StartsWith(prefix))
+                .OrderByDescending(b => b.BillNumber)
+                .FirstOrDefaultAsync();
+
+            int nextSeq = 1;
+            if (lastBill != null)
+            {
+                var seqStr = lastBill.BillNumber.Replace(prefix, "");
+                if (int.TryParse(seqStr, out var seqNum))
+                    nextSeq = seqNum + 1;
+            }
+
+            return $"{prefix}{nextSeq:D4}";
+        }
+    }
 }

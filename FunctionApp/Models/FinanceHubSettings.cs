@@ -25,6 +25,15 @@ namespace FinanceHubFunctions.Models
         public string? PaymentGatewayApiKey { get; set; }
         public string? PaymentGatewayProvider { get; set; } // Stripe, PayPal, etc.
         
+        // GoCardless Configuration
+        public string? GoCardlessAccessToken { get; set; }
+        public string? GoCardlessSecretId { get; set; }
+        public string? GoCardlessSecretKey { get; set; }
+        public string? GoCardlessWebhookSecret { get; set; }
+        public bool GoCardlessSandbox { get; set; } = true;
+        public bool GoCardlessBankDataEnabled { get; set; } = false;
+        public bool GoCardlessPaymentsEnabled { get; set; } = false;
+        
         // Storage Configuration
         public string? BlobStorageConnectionString { get; set; }
         public string? InvoicesContainerName { get; set; }

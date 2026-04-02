@@ -33,6 +33,8 @@ namespace FinanceHubFunctions.Models
         public string? InvoiceFooterText { get; set; }
         public string? FooterText { get; set; }
         public string? LogoUrl { get; set; }
+        public string? DocumentLogoUrl { get; set; }  // Logo used in PDF documents (invoices, quotes, payslips, etc.)
+        public string? EmailLogoUrl { get; set; }      // Logo used in email templates
         public string? InvoicesEmail { get; set; }
         public string? QuotesEmail { get; set; }
         public string? PaymentsEmail { get; set; }
@@ -57,6 +59,7 @@ namespace FinanceHubFunctions.Models
         public string? PsaContactName { get; set; } // PSA HMRC reference or contact name
         public int? VatQuarterStartMonth { get; set; } // 1-12: the month your first VAT quarter starts (e.g. 2 = Feb for Feb/Mar/Apr)
         public string? VatAccountingMethod { get; set; } // 'invoice' (default) or 'cash' (UK Cash Accounting Scheme)
+        public DateTime? VatEffectiveDate { get; set; } // Date VAT registration became effective — quarters before this are not required
         public string? Utr { get; set; } // HMRC Unique Taxpayer Reference (10 digits)
         public decimal? AmapRate45p { get; set; }        // HMRC AMAP rate for first N miles (default 0.45)
         public decimal? AmapRate25p { get; set; }        // HMRC AMAP rate over threshold (default 0.25)

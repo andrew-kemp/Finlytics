@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAuthHeaders } from '../services/apiService';
+import { getAuthHeaders, getEmployees } from '../services/apiService';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://financehub-func-kemponline.azurewebsites.net/api';
 const TRIVIAL_BENEFIT_LIMIT = 6;
@@ -39,8 +39,27 @@ function calculateFinancialYear(dateStr) {
 export default function TrivialBenefitModal({ directors = [], onClose, onSaved }) {
     const today = new Date().toISOString().split('T')[0];
 
+    // Build recipients list: directors + employees (deduplicated)
+    const [recipients, setRecipients] = useState([]);
+    useEffect(() => {
+        (async () => {
+            let people = [...directors.map(d => ({ name: d, type: 'Director' }))];
+            try {
+                const employees = await getEmployees();
+                for (const emp of (employees || [])) {
+                    if (!emp.name || !emp.isActive) continue;
+                    // Don't duplicate directors already in the list
+                    if (!people.some(p => p.name.toLowerCase() === emp.name.toLowerCase())) {
+                        people.push({ name: emp.name, type: emp.isDirector ? 'Director' : 'Employee' });
+                    }
+                }
+            } catch { /* employees not available — directors-only fallback */ }
+            setRecipients(people);
+        })();
+    }, [directors]);
+
     const [form, setForm] = useState({
-        director: directors.length === 1 ? directors[0] : '',
+        recipient: directors.length === 1 ? directors[0] : '',
         date: today,
         benefitType: '',
         description: '',
@@ -50,14 +69,14 @@ export default function TrivialBenefitModal({ directors = [], onClose, onSaved }
         notes: '',
     });
 
-    const [summary, setSummary] = useState(null); // { count, limit, remaining, isAtLimit }
+    const [summary, setSummary] = useState(null);
     const [loadingSummary, setLoadingSummary] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
 
     const taxYear = calculateTaxYear(form.date);
 
-    // Load trivial benefit summary for current tax year
+    // Load trivial benefit summary for current tax year + selected recipient
     useEffect(() => {
         if (!taxYear) return;
         let cancelled = false;
@@ -65,7 +84,9 @@ export default function TrivialBenefitModal({ directors = [], onClose, onSaved }
         (async () => {
             try {
                 const headers = await getAuthHeaders();
-                const res = await fetch(`${API_BASE}/trivialbenefits/summary?taxYear=${encodeURIComponent(taxYear)}`, { headers });
+                const qs = new URLSearchParams({ taxYear });
+                if (form.recipient) qs.set('recipient', form.recipient);
+                const res = await fetch(`${API_BASE}/trivialbenefits/summary?${qs}`, { headers });
                 if (res.ok) {
                     const data = await res.json();
                     if (!cancelled) setSummary(data);
@@ -74,14 +95,16 @@ export default function TrivialBenefitModal({ directors = [], onClose, onSaved }
             if (!cancelled) setLoadingSummary(false);
         })();
         return () => { cancelled = true; };
-    }, [taxYear]);
+    }, [taxYear, form.recipient]);
 
     const amountVal = parseFloat(form.amount) || 0;
     const amountOverLimit = amountVal > AMOUNT_LIMIT;
     const atLimit = summary?.isAtLimit;
     const usedCount = summary?.count ?? '…';
+    const selectedRecipientType = recipients.find(r => r.name === form.recipient)?.type;
+    const isDirectorRecipient = selectedRecipientType === 'Director';
     const canSubmit = !amountOverLimit && !atLimit && form.nonExchangeable
-        && form.director && form.benefitType && amountVal > 0 && form.description;
+        && form.recipient && form.benefitType && amountVal > 0 && form.description;
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -95,16 +118,16 @@ export default function TrivialBenefitModal({ directors = [], onClose, onSaved }
             const currentFinancialYear = calculateFinancialYear(form.date);
             const grossAmount = parseFloat(form.amount);
 
-            if (form.paymentMethod === 'Personally Paid') {
+            if (form.paymentMethod === 'Personally Paid' && isDirectorRecipient) {
                 // → DLA entry (director paid personally, will reclaim from company)
                 const payload = {
-                    director: form.director,
+                    director: form.recipient,
                     direction: 'OwedToDirector',
                     description: form.description,
                     category: 'Trivial Benefit',
-                    ctTag: 'Revenue',  // CT-deductible staff welfare (s.323A ITEPA)
+                    ctTag: 'Revenue',
                     amountNet: grossAmount,
-                    vatAmount: 0,      // No input VAT recovery on trivial benefits
+                    vatAmount: 0,
                     amountGross: grossAmount,
                     entryDate: new Date(form.date).toISOString(),
                     datePaid: null,
@@ -116,6 +139,7 @@ export default function TrivialBenefitModal({ directors = [], onClose, onSaved }
                     classificationSource: 'manual',
                     isTrivialBenefit: true,
                     trivialBenefitType: form.benefitType,
+                    trivialBenefitRecipient: form.recipient,
                 };
                 const res = await fetch(`${API_BASE}/dla`, {
                     method: 'POST',
@@ -127,24 +151,25 @@ export default function TrivialBenefitModal({ directors = [], onClose, onSaved }
                     throw new Error(msg || 'Failed to create DLA entry');
                 }
             } else {
-                // → Expense entry (paid with company card)
+                // → Expense entry (company card, or employee personally paid)
                 const payload = {
                     supplier: form.description,
                     category: 'Trivial Benefit',
-                    ctTag: 'Revenue',  // CT-deductible staff welfare (s.323A ITEPA)
+                    ctTag: 'Revenue',
                     vatApplicability: 'Exempt',
                     vatIncluded: false,
                     amountNet: grossAmount,
-                    vatAmount: 0,      // No input VAT recovery on trivial benefits
+                    vatAmount: 0,
                     amountGross: grossAmount,
                     datePaid: form.date,
                     paymentMethod: form.paymentMethod,
-                    notes: `${form.benefitType}${form.notes ? ' — ' + form.notes : ''}`,
+                    notes: `For: ${form.recipient} — ${form.benefitType}${form.notes ? ' — ' + form.notes : ''}`,
                     taxYear: currentTaxYear,
                     financialYear: currentFinancialYear,
                     isDLA: false,
                     isTrivialBenefit: true,
                     trivialBenefitType: form.benefitType,
+                    trivialBenefitRecipient: form.recipient,
                 };
                 const res = await fetch(`${API_BASE}/expenses`, {
                     method: 'POST',
@@ -170,56 +195,82 @@ export default function TrivialBenefitModal({ directors = [], onClose, onSaved }
 
     return (
         <div className="modal-overlay" onClick={() => !saving && onClose()}>
-            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
                 {/* Header */}
                 <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
                         <h2 style={{ margin: 0 }}>🎁 Trivial Benefit</h2>
                         <p style={{ margin: '0.15rem 0 0', fontSize: '0.8rem', opacity: 0.7 }}>
-                            HMRC s.323 — max £{AMOUNT_LIMIT.toFixed(0)}, max {TRIVIAL_BENEFIT_LIMIT} per tax year, non-cash only
+                            HMRC s.323 — max £{AMOUNT_LIMIT.toFixed(0)} per benefit, max {TRIVIAL_BENEFIT_LIMIT} per person per tax year
                         </p>
                     </div>
                     <button className="btn-close" onClick={onClose} disabled={saving}>✖</button>
                 </div>
 
-                {/* Usage counter */}
-                <div style={{
-                    margin: '0.75rem 1.25rem',
-                    padding: '0.6rem 1rem',
-                    borderRadius: 8,
-                    background: atLimit ? '#fef2f2' : '#f0fdf4',
-                    border: `1px solid ${usedColor}30`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.75rem',
-                }}>
-                    <span style={{ fontSize: '1.5rem' }}>
-                        {atLimit ? '🚫' : '🎁'}
-                    </span>
-                    <div>
-                        <div style={{ fontWeight: 600, color: usedColor }}>
-                            {loadingSummary ? '… / 6' : `${usedCount} / ${TRIVIAL_BENEFIT_LIMIT}`} used in {taxYear || '—'}
+                {/* Per-recipient usage counter */}
+                {form.recipient && (
+                    <div style={{
+                        margin: '0.75rem 1.25rem',
+                        padding: '0.6rem 1rem',
+                        borderRadius: 8,
+                        background: atLimit ? '#fef2f2' : '#f0fdf4',
+                        border: `1px solid ${usedColor}30`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.75rem',
+                    }}>
+                        <span style={{ fontSize: '1.5rem' }}>
+                            {atLimit ? '🚫' : '🎁'}
+                        </span>
+                        <div>
+                            <div style={{ fontWeight: 600, color: usedColor }}>
+                                {loadingSummary ? '… / 6' : `${usedCount} / ${TRIVIAL_BENEFIT_LIMIT}`} used for {form.recipient} in {taxYear || '—'}
+                            </div>
+                            {atLimit
+                                ? <div style={{ fontSize: '0.8rem', color: '#dc2626' }}>Limit reached — no more trivial benefits for {form.recipient} this tax year.</div>
+                                : <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>{summary ? `${summary.remaining} remaining` : ''}</div>
+                            }
                         </div>
-                        {atLimit
-                            ? <div style={{ fontSize: '0.8rem', color: '#dc2626' }}>Limit reached — no more trivial benefits allowed this tax year.</div>
-                            : <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>{summary ? `${summary.remaining} remaining` : ''}</div>
-                        }
                     </div>
-                </div>
+                )}
+
+                {/* Per-recipient breakdown if multiple people have benefits */}
+                {summary?.byRecipient?.length > 0 && !form.recipient && (
+                    <div style={{ margin: '0.5rem 1.25rem', fontSize: '0.85rem' }}>
+                        <strong>Benefits by person ({taxYear}):</strong>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.3rem' }}>
+                            {summary.byRecipient.map(r => (
+                                <span key={r.recipient} style={{
+                                    padding: '0.2rem 0.5rem',
+                                    borderRadius: 4,
+                                    background: r.isAtLimit ? '#fef2f2' : '#f0fdf4',
+                                    border: `1px solid ${r.isAtLimit ? '#fecaca' : '#bbf7d0'}`,
+                                    fontSize: '0.8rem',
+                                }}>
+                                    {r.recipient}: {r.count}/{TRIVIAL_BENEFIT_LIMIT}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 <form onSubmit={handleSubmit} style={{ padding: '0 1.25rem 1.25rem' }}>
-                    {/* Director */}
+                    {/* Recipient (Director or Employee) */}
                     <div className="form-group">
-                        <label>Director *</label>
-                        {directors.length > 0 ? (
-                            <select value={form.director} onChange={e => setForm(p => ({ ...p, director: e.target.value }))} required>
-                                <option value="">Select director…</option>
-                                {directors.map(d => <option key={d} value={d}>{d}</option>)}
+                        <label>Recipient (Employee / Director) *</label>
+                        {recipients.length > 0 ? (
+                            <select value={form.recipient} onChange={e => setForm(p => ({ ...p, recipient: e.target.value }))} required>
+                                <option value="">Select person…</option>
+                                {recipients.map(r => (
+                                    <option key={r.name} value={r.name}>
+                                        {r.name} ({r.type})
+                                    </option>
+                                ))}
                             </select>
                         ) : (
-                            <input type="text" value={form.director}
-                                onChange={e => setForm(p => ({ ...p, director: e.target.value }))}
-                                placeholder="Director name" required />
+                            <input type="text" value={form.recipient}
+                                onChange={e => setForm(p => ({ ...p, recipient: e.target.value }))}
+                                placeholder="Employee or director name" required />
                         )}
                     </div>
 
@@ -244,7 +295,7 @@ export default function TrivialBenefitModal({ directors = [], onClose, onSaved }
                         <label>Description *</label>
                         <input type="text" value={form.description}
                             onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
-                            placeholder="e.g. Amazon Gift Card for Jane Smith" required />
+                            placeholder="e.g. Amazon Gift Card for birthday" required />
                     </div>
 
                     {/* Amount */}
@@ -255,7 +306,6 @@ export default function TrivialBenefitModal({ directors = [], onClose, onSaved }
                             inputMode="decimal"
                             value={form.amount}
                             onChange={e => {
-                                // Allow digits and a single decimal point only
                                 const raw = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
                                 setForm(p => ({ ...p, amount: raw }));
                             }}
@@ -283,10 +333,19 @@ export default function TrivialBenefitModal({ directors = [], onClose, onSaved }
                                     <input type="radio" name="paymentMethod" value={opt}
                                         checked={form.paymentMethod === opt}
                                         onChange={() => setForm(p => ({ ...p, paymentMethod: opt }))} />
-                                    {opt === 'Company Card' ? '💳 Company Card → saved as Expense' : '👤 Personally Paid → saved as DLA'}
+                                    {opt === 'Company Card'
+                                        ? '💳 Company Card → saved as Expense'
+                                        : isDirectorRecipient
+                                            ? '👤 Personally Paid → saved as DLA'
+                                            : '👤 Personally Paid → saved as Expense'}
                                 </label>
                             ))}
                         </div>
+                        {form.paymentMethod === 'Personally Paid' && !isDirectorRecipient && (
+                            <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                                Note: Employee-paid trivial benefits are recorded as expenses (DLA only applies to directors).
+                            </div>
+                        )}
                     </div>
 
                     {/* Notes */}

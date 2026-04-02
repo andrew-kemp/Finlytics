@@ -15,6 +15,8 @@ import { useToast } from '../hooks/useToast';
 const ProfitAndLoss = lazy(() => import('./ProfitAndLoss'));
 const BalanceSheet  = lazy(() => import('./BalanceSheet'));
 const AgedDebtors   = lazy(() => import('./AgedDebtors'));
+const CT600Form     = lazy(() => import('./CT600Form'));
+const YearEndPack   = lazy(() => import('./YearEndPack'));
 
 // --- Helpers ---
 
@@ -1548,6 +1550,8 @@ ${computation.quarters.map(q => `
 // ============================================================
 const TABS = [
     { key: 'ct',       label: '🏛️ CT Report',       icon: '🏛️' },
+    { key: 'ct600',    label: '📄 CT600 Form',      icon: '📄' },
+    { key: 'yearend',  label: '📦 Year-End Pack',   icon: '📦' },
     { key: 'pnl',      label: '📊 Profit & Loss',    icon: '📊' },
     { key: 'bs',       label: '🏦 Balance Sheet',    icon: '🏦' },
     { key: 'debtors',  label: '⏰ Aged Debtors',     icon: '⏰' },
@@ -1602,6 +1606,8 @@ export default function Reports() {
                 </div>
             }>
                 {activeTab === 'ct'      && <CTReport />}
+                {activeTab === 'ct600'   && <CT600Form />}
+                {activeTab === 'yearend' && <YearEndPack />}
                 {activeTab === 'pnl'     && <ProfitAndLoss />}
                 {activeTab === 'bs'      && <BalanceSheet />}
                 {activeTab === 'debtors' && <AgedDebtors />}

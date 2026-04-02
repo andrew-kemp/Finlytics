@@ -217,14 +217,21 @@ namespace FinanceHubFunctions.Functions
                     if (_expenseRepository != null && _dbContext != null)
                     {
                         var taxYearKey = CalculateTaxYear(expense.EntryDate ?? expense.DatePaid ?? DateTime.Now);
-                        var allExp = await _expenseRepository.GetAllAsync();
-                        var expCount = allExp.Count(e => e.IsTrivialBenefit && e.TaxYear == taxYearKey);
-                        var dlaCount = await _dbContext.Set<DlaEntry>().CountAsync(d => d.IsTrivialBenefit && d.TaxYear == taxYearKey);
-                        if (expCount + dlaCount >= 6)
+                        var recipient = expense.TrivialBenefitRecipient ?? "";
+
+                        if (!string.IsNullOrWhiteSpace(recipient))
                         {
-                            var tb400 = req.CreateResponse(HttpStatusCode.BadRequest);
-                            await tb400.WriteStringAsync($"Trivial benefit limit reached: 6 of 6 already recorded in tax year {taxYearKey}. HMRC allows a maximum of 6 trivial benefits per director per tax year.");
-                            return tb400;
+                            var allExp = await _expenseRepository.GetAllAsync();
+                            var expCount = allExp.Count(e => e.IsTrivialBenefit && e.TaxYear == taxYearKey
+                                && string.Equals(e.TrivialBenefitRecipient, recipient, StringComparison.OrdinalIgnoreCase));
+                            var dlaCount = await _dbContext.Set<DlaEntry>().CountAsync(d => d.IsTrivialBenefit && d.TaxYear == taxYearKey
+                                && (d.TrivialBenefitRecipient ?? d.Director) == recipient);
+                            if (expCount + dlaCount >= 6)
+                            {
+                                var tb400 = req.CreateResponse(HttpStatusCode.BadRequest);
+                                await tb400.WriteStringAsync($"Trivial benefit limit reached: {recipient} already has 6 of 6 recorded in tax year {taxYearKey}. HMRC allows a maximum of 6 trivial benefits per employee/director per tax year.");
+                                return tb400;
+                            }
                         }
                     }
 

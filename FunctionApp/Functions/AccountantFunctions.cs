@@ -132,8 +132,7 @@ namespace FinanceHubFunctions.Functions
                 }
 
                 // Get the company
-                var allSettings = await _settingsRepo.GetAllAsync();
-                var company = allSettings.FirstOrDefault();
+                var company = await _settingsRepo.GetDefaultAsync();
                 if (company == null)
                 {
                     var bad = req.CreateResponse(HttpStatusCode.BadRequest);
@@ -194,11 +193,13 @@ namespace FinanceHubFunctions.Functions
                     ?? "https://accountantdev.finlytics.co.uk";
                 var inviteLink = $"{accountantPortalUrl}?token={inviteToken}";
 
+                var emailSent = false;
+                string emailError = null;
                 if (_emailService != null)
                 {
                     try
                     {
-                        await _emailService.SendSystemEmailAsync(
+                        var (success, error) = await _emailService.SendSystemEmailAsync(
                             toEmail: email,
                             subject: $"You've been invited to view {company.CompanyName ?? "a company"} on Finlytics",
                             htmlBody: $@"
@@ -211,11 +212,17 @@ namespace FinanceHubFunctions.Functions
                                 <p>This gives you read-only access to {company.CompanyName}'s financial records.</p>
                                 <p>Best regards,<br/>Finlytics</p>"
                         );
+                        emailSent = success;
+                        if (!success) emailError = error;
                     }
                     catch (Exception emailEx)
                     {
-                        Console.WriteLine($"Failed to send accountant invite email: {emailEx.Message}");
+                        emailError = emailEx.Message;
                     }
+                }
+                else
+                {
+                    emailError = "Email service not configured";
                 }
 
                 var response = req.CreateResponse(HttpStatusCode.OK);
@@ -225,7 +232,11 @@ namespace FinanceHubFunctions.Functions
                     accountantId = accountant.Id,
                     email,
                     inviteLink,
-                    message = "Invitation sent"
+                    emailSent,
+                    message = emailSent
+                        ? "Invitation sent by email"
+                        : "Invitation created — email could not be sent. Share the invite link manually.",
+                    emailError
                 });
                 return response;
             }
@@ -246,8 +257,7 @@ namespace FinanceHubFunctions.Functions
         {
             try
             {
-                var allSettings = await _settingsRepo.GetAllAsync();
-                var company = allSettings.FirstOrDefault();
+                var company = await _settingsRepo.GetDefaultAsync();
                 if (company == null)
                 {
                     var bad = req.CreateResponse(HttpStatusCode.BadRequest);
@@ -416,9 +426,11 @@ namespace FinanceHubFunctions.Functions
                 var links = await _companyAccountantRepo.GetByAccountantIdAsync(accountant.Id);
                 var activeLinks = links.Where(l => l.Status == "Active").ToList();
 
-                // Fetch company names
-                var allSettings = await _settingsRepo.GetAllAsync();
-                var settingsLookup = allSettings.ToDictionary(s => s.Id, s => s);
+                // Fetch company name
+                var defaultSettings = await _settingsRepo.GetDefaultAsync();
+                var settingsLookup = defaultSettings != null
+                    ? new Dictionary<int, CompanySettings> { { defaultSettings.Id, defaultSettings } }
+                    : new Dictionary<int, CompanySettings>();
 
                 var companies = activeLinks.Select(l =>
                 {
@@ -466,12 +478,14 @@ namespace FinanceHubFunctions.Functions
                 var links = await _companyAccountantRepo.GetByAccountantIdAsync(auth.Value.accountant.Id);
                 var activeLinks = links.Where(l => l.Status == "Active").ToList();
 
-                var allSettings = await _settingsRepo.GetAllAsync();
-                var settingsLookup = allSettings.ToDictionary(s => s.Id, s => s);
+                var defaultSettings2 = await _settingsRepo.GetDefaultAsync();
+                var settingsLookup2 = defaultSettings2 != null
+                    ? new Dictionary<int, CompanySettings> { { defaultSettings2.Id, defaultSettings2 } }
+                    : new Dictionary<int, CompanySettings>();
 
                 var companies = activeLinks.Select(l =>
                 {
-                    settingsLookup.TryGetValue(l.CompanyId, out var cs);
+                    settingsLookup2.TryGetValue(l.CompanyId, out var cs);
                     return new
                     {
                         companyId = l.CompanyId,
@@ -512,7 +526,7 @@ namespace FinanceHubFunctions.Functions
                 var auth = await ValidateAccountantAsync(req, companyId);
                 if (auth == null) return await Forbidden(req);
 
-                var settings = (await _settingsRepo.GetAllAsync()).FirstOrDefault(s => s.Id == companyId);
+                var settings = await _settingsRepo.GetByIdAsync(companyId);
                 var ledger = (await _ledgerRepo.GetAllAsync()).ToList();
                 var expenses = (await _expenseRepo.GetAllAsync()).ToList();
                 var invoices = (await _invoiceRepo.GetAllAsync()).ToList();
@@ -758,7 +772,13 @@ namespace FinanceHubFunctions.Functions
                     .OrderByDescending(r => r.PayDate)
                     .ToList();
 
-                var payslips = (await _payslipRepo.GetAllAsync()).ToList();
+                var allPayslips = new List<Payslip>();
+                foreach (var r in runs)
+                {
+                    var slips = await _payslipRepo.GetByPayrollRunIdAsync(r.Id);
+                    allPayslips.AddRange(slips);
+                }
+                var payslips = allPayslips;
                 var employees = (await _employeeRepo.GetAllAsync()).ToDictionary(e => e.Id, e => e);
 
                 var result = runs.Select(r =>
@@ -887,8 +907,8 @@ namespace FinanceHubFunctions.Functions
                 var auth = await ValidateAccountantAsync(req, companyId);
                 if (auth == null) return await Forbidden(req);
 
-                var settings = (await _settingsRepo.GetAllAsync()).FirstOrDefault(s => s.Id == companyId);
-                if (settings == null)
+                var settings = await _settingsRepo.GetDefaultAsync();
+                if (settings == null || settings.Id != companyId)
                 {
                     var notFound = req.CreateResponse(HttpStatusCode.NotFound);
                     await notFound.WriteAsJsonAsync(new { error = "Company not found" });
@@ -900,9 +920,9 @@ namespace FinanceHubFunctions.Functions
                 await response.WriteAsJsonAsync(new
                 {
                     settings.CompanyName,
-                    settings.CompanyAddress ?? settings.Address,
-                    settings.CompanyPhone ?? settings.PhoneNumber,
-                    settings.CompanyEmail ?? settings.Email,
+                    companyAddress = settings.CompanyAddress ?? settings.Address,
+                    companyPhone = settings.CompanyPhone ?? settings.PhoneNumber,
+                    companyEmail = settings.CompanyEmail ?? settings.Email,
                     settings.CompanyRegistrationNumber,
                     settings.TaxRegistrationNumber,
                     vatNumber = settings.VATNumber ?? settings.VatRegistrationNumber,

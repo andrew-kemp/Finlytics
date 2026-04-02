@@ -319,7 +319,19 @@ namespace FinanceHubFunctions.Functions
             byte[]? logoBytes = null;
             if (company != null && _blobStorage != null)
             {
-                try { var (b, _) = await _blobStorage.GetLogoAsync(company.Id); logoBytes = b; }
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(company.DocumentLogoUrl))
+                    {
+                        var (b, _) = await _blobStorage.GetLogoBytesFromUrlAsync(company.DocumentLogoUrl);
+                        logoBytes = b;
+                    }
+                    if (logoBytes == null)
+                    {
+                        var (b, _) = await _blobStorage.GetLogoAsync(company.Id);
+                        logoBytes = b;
+                    }
+                }
                 catch { /* no logo */ }
             }
 

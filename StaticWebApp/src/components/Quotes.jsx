@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { getQuotes, createQuote, updateQuote, deleteQuote, getNextQuoteNumber, getCustomers } from '../services/apiService';
+import { getQuotes, createQuote, updateQuote, deleteQuote, getNextQuoteNumber, getCustomers, getLineItemDescriptions } from '../services/apiService';
 import Toast from './Toast';
 import { useToast } from '../hooks/useToast';
+import AutocompleteInput from './AutocompleteInput';
 
 const API_BASE = 'https://financehub-func-kemponline.azurewebsites.net/api';
 
 export default function Quotes() {
   const [quotes, setQuotes] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [descriptionSuggestions, setDescriptionSuggestions] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editingQuote, setEditingQuote] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -32,6 +34,7 @@ export default function Quotes() {
   useEffect(() => {
     loadQuotes();
     loadCustomers();
+    getLineItemDescriptions().then(setDescriptionSuggestions).catch(() => {});
   }, []);
 
   const toDateInput = (value) => {
@@ -532,10 +535,10 @@ export default function Quotes() {
                   {formData.lineItems.map((item, index) => (
                     <tr key={index}>
                       <td style={{ padding: '5px', border: '1px solid #ddd' }}>
-                        <input
-                          type="text"
+                        <AutocompleteInput
                           value={item.description}
-                          onChange={(e) => handleLineItemChange(index, 'description', e.target.value)}
+                          onChange={(val) => handleLineItemChange(index, 'description', val)}
+                          suggestions={descriptionSuggestions}
                           style={{ width: '100%', padding: '5px', border: '1px solid #ddd', borderRadius: '4px' }}
                         />
                       </td>

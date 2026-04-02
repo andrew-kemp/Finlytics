@@ -139,6 +139,8 @@ namespace FinanceHubFunctions.Functions
                     if (!string.IsNullOrEmpty(settings.PaymentTerms)) existingSettings.PaymentTerms = settings.PaymentTerms;
                     if (!string.IsNullOrEmpty(settings.InvoiceFooterText ?? settings.FooterText)) existingSettings.InvoiceFooterText = settings.InvoiceFooterText ?? settings.FooterText;
                     if (!string.IsNullOrEmpty(settings.LogoUrl)) existingSettings.LogoUrl = settings.LogoUrl;
+                    if (settings.DocumentLogoUrl != null) existingSettings.DocumentLogoUrl = settings.DocumentLogoUrl;
+                    if (settings.EmailLogoUrl != null) existingSettings.EmailLogoUrl = settings.EmailLogoUrl;
                     if (!string.IsNullOrEmpty(settings.InvoicesEmail)) existingSettings.InvoicesEmail = settings.InvoicesEmail;
                     if (!string.IsNullOrEmpty(settings.QuotesEmail)) existingSettings.QuotesEmail = settings.QuotesEmail;
                     if (!string.IsNullOrEmpty(settings.PaymentsEmail)) existingSettings.PaymentsEmail = settings.PaymentsEmail;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { getCompanySettings, updateCompanySettings, testSmtpConfiguration, adminLogin, adminMfaSetup, adminMfaVerify, adminChangePassword, getFinanceHubSettings, updateFinanceHubSettings, getPayrollSettings, updatePayrollSettings } from '../services/apiService';
+import { getCompanySettings, updateCompanySettings, testSmtpConfiguration, adminLogin, adminMfaSetup, adminMfaVerify, adminChangePassword, getFinanceHubSettings, updateFinanceHubSettings, getPayrollSettings, updatePayrollSettings, inviteAccountant, getLinkedAccountants, revokeAccountant } from '../services/apiService';
 import Toast from './Toast';
 import './Settings.css';
 
@@ -28,6 +28,8 @@ const Settings = () => {
         invoiceTermsDays: '30',
         invoiceFooterText: '',
         logoUrl: '',
+        documentLogoUrl: '',
+        emailLogoUrl: '',
         companyInceptionDate: '',
         // incorporationDate removed - companyInceptionDate is used everywhere
         fyStartMonth: '',
@@ -46,6 +48,7 @@ const Settings = () => {
         psaApproved: false,
         psaContactName: '',
         vatQuarterStartMonth: '',
+        vatEffectiveDate: '',
         vatAccountingMethod: 'cash',
         utr: '',
         allowDataDeletion: false,
@@ -88,6 +91,11 @@ const Settings = () => {
     const [toast, setToast] = useState(null);
     const [payrollSettingsForm, setPayrollSettingsForm] = useState(null);
     const [payrollSaving, setPayrollSaving] = useState(false);
+    const [accountants, setAccountants] = useState([]);
+    const [accountantsLoading, setAccountantsLoading] = useState(false);
+    const [inviteForm, setInviteForm] = useState({ email: '', name: '', firmName: '' });
+    const [inviting, setInviting] = useState(false);
+    const [lastInviteResult, setLastInviteResult] = useState(null);
 
     const showToast = useCallback((msg, type = 'success') => {
         setToast({ message: msg, type });
@@ -167,6 +175,8 @@ const Settings = () => {
                     invoiceTermsDays: data.invoiceTermsDays || '30',
                     invoiceFooterText: data.invoiceFooterText || '',
                     logoUrl: data.logoUrl || '',
+                    documentLogoUrl: data.documentLogoUrl || '',
+                    emailLogoUrl: data.emailLogoUrl || '',
                     companyInceptionDate: data.companyInceptionDate || '',
                     fyStartMonth: data.fyStartMonth || '',
                     fyStartDay: data.fyStartDay || '',
@@ -184,6 +194,7 @@ const Settings = () => {
                     psaApproved: data.psaApproved || false,
                     psaContactName: data.psaContactName || '',
                     vatQuarterStartMonth: data.vatQuarterStartMonth || '',
+                    vatEffectiveDate: data.vatEffectiveDate ? data.vatEffectiveDate.substring(0, 10) : '',
                     vatAccountingMethod: data.vatAccountingMethod || 'cash',
                     allowDataDeletion: data.allowDataDeletion || false,
                     allowDividendDeletion: data.allowDividendDeletion || false,
@@ -255,6 +266,50 @@ const Settings = () => {
             showToast('Failed to save payroll settings: ' + (err.message || 'Unknown error'), 'error');
         } finally {
             setPayrollSaving(false);
+        }
+    };
+
+    const loadAccountants = async () => {
+        setAccountantsLoading(true);
+        try {
+            const data = await getLinkedAccountants();
+            setAccountants(Array.isArray(data) ? data : []);
+        } catch (err) {
+            showToast('Failed to load accountants: ' + (err.message || 'Unknown error'), 'error');
+        } finally {
+            setAccountantsLoading(false);
+        }
+    };
+
+    const handleInviteAccountant = async () => {
+        if (!inviteForm.email) return;
+        setInviting(true);
+        setLastInviteResult(null);
+        try {
+            const result = await inviteAccountant(inviteForm);
+            if (result.emailSent) {
+                showToast(`Invitation emailed to ${inviteForm.email}`);
+            } else {
+                showToast('Invitation created but email could not be sent — share the link manually.', 'warning');
+            }
+            setLastInviteResult(result);
+            setInviteForm({ email: '', name: '', firmName: '' });
+            await loadAccountants();
+        } catch (err) {
+            showToast(err.message || 'Failed to send invitation', 'error');
+        } finally {
+            setInviting(false);
+        }
+    };
+
+    const handleRevokeAccountant = async (linkId) => {
+        if (!window.confirm('Are you sure you want to revoke this accountant\'s access?')) return;
+        try {
+            await revokeAccountant(linkId);
+            showToast('Accountant access revoked');
+            await loadAccountants();
+        } catch (err) {
+            showToast(err.message || 'Failed to revoke access', 'error');
         }
     };
 
@@ -540,6 +595,12 @@ const Settings = () => {
                     onClick={() => setActiveTab('security')}
                 >
                     🔐 Security
+                </button>
+                <button 
+                    className={`tab ${activeTab === 'accountants' ? 'active' : ''}`}
+                    onClick={() => { setActiveTab('accountants'); loadAccountants(); }}
+                >
+                    👤 Accountants
                 </button>
             </div>
 
@@ -843,6 +904,31 @@ const Settings = () => {
                             onChange={handleChange}
                             placeholder="https://..."
                         />
+                        <small style={{color: '#666', fontSize: '0.85rem'}}>Default logo — used when document/email logos are not set. Auto-updated when uploading a logo in Company Documents.</small>
+                    </div>
+                </div>
+                <div className="form-row">
+                    <div className="form-group">
+                        <label>Document Logo URL (PDFs)</label>
+                        <input
+                            type="url"
+                            name="documentLogoUrl"
+                            value={settings.documentLogoUrl}
+                            onChange={handleChange}
+                            placeholder="https://... (leave blank to use default logo)"
+                        />
+                        <small style={{color: '#666', fontSize: '0.85rem'}}>Used on invoices, quotes, credit notes, payslips, and other PDF documents.</small>
+                    </div>
+                    <div className="form-group">
+                        <label>Email Logo URL</label>
+                        <input
+                            type="url"
+                            name="emailLogoUrl"
+                            value={settings.emailLogoUrl}
+                            onChange={handleChange}
+                            placeholder="https://... (leave blank to use default logo)"
+                        />
+                        <small style={{color: '#666', fontSize: '0.85rem'}}>Used in the header of email templates (invoice, quote, payment emails, etc.).</small>
                     </div>
                 </div>
                     </>
@@ -1350,6 +1436,16 @@ const Settings = () => {
                                 <small style={{color: '#666', fontSize: '0.85rem'}}>Used by the VAT Returns page and the dashboard VAT tracker</small>
                             </div>
                             <div className="form-group">
+                                <label>VAT Effective Date</label>
+                                <input
+                                    type="date"
+                                    name="vatEffectiveDate"
+                                    value={settings.vatEffectiveDate || ''}
+                                    onChange={handleChange}
+                                />
+                                <small style={{color: '#666', fontSize: '0.85rem'}}>When your VAT registration became effective — quarters before this date won't trigger filing reminders</small>
+                            </div>
+                            <div className="form-group">
                                 <label>VAT Accounting Method</label>
                                 <select
                                     name="vatAccountingMethod"
@@ -1448,6 +1544,96 @@ const Settings = () => {
                             <button type="submit" className="btn-primary" disabled={saving}>
                                 {saving ? 'Saving...' : '💾 Save Banking Details'}
                             </button>
+                        </div>
+
+                        {/* ── GoCardless Configuration ── */}
+                        <div style={{ marginTop: '2.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e5e7eb' }}>
+                            <h3>💳 GoCardless Configuration</h3>
+                            <p style={{ color: '#666', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                                Direct Debit mandates, payments &amp; open-banking bank feeds. Configure your GoCardless API keys below.
+                                Fees: 1% + 20p capped at £2 per transaction.
+                            </p>
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Access Token (Payments API)</label>
+                                    <input
+                                        type="password"
+                                        name="goCardlessAccessToken"
+                                        value={settings.goCardlessAccessToken || ''}
+                                        onChange={handleChange}
+                                        placeholder="live_..."
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Webhook Secret</label>
+                                    <input
+                                        type="password"
+                                        name="goCardlessWebhookSecret"
+                                        value={settings.goCardlessWebhookSecret || ''}
+                                        onChange={handleChange}
+                                    />
+                                </div>
+                            </div>
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Bank Data — Secret ID</label>
+                                    <input
+                                        type="password"
+                                        name="goCardlessSecretId"
+                                        value={settings.goCardlessSecretId || ''}
+                                        onChange={handleChange}
+                                        placeholder="Bank Account Data API secret ID"
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Bank Data — Secret Key</label>
+                                    <input
+                                        type="password"
+                                        name="goCardlessSecretKey"
+                                        value={settings.goCardlessSecretKey || ''}
+                                        onChange={handleChange}
+                                        placeholder="Bank Account Data API secret key"
+                                    />
+                                </div>
+                            </div>
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <input
+                                            type="checkbox"
+                                            name="goCardlessSandbox"
+                                            checked={settings.goCardlessSandbox ?? true}
+                                            onChange={e => handleChange({ target: { name: 'goCardlessSandbox', value: e.target.checked } })}
+                                        />
+                                        Sandbox Mode
+                                    </label>
+                                    <small style={{ color: '#666', fontSize: '0.8rem' }}>Use GoCardless sandbox environment for testing</small>
+                                </div>
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <input
+                                            type="checkbox"
+                                            name="goCardlessBankDataEnabled"
+                                            checked={settings.goCardlessBankDataEnabled ?? false}
+                                            onChange={e => handleChange({ target: { name: 'goCardlessBankDataEnabled', value: e.target.checked } })}
+                                        />
+                                        Enable Bank Data (Open Banking)
+                                    </label>
+                                </div>
+                            </div>
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <input
+                                            type="checkbox"
+                                            name="goCardlessPaymentsEnabled"
+                                            checked={settings.goCardlessPaymentsEnabled ?? false}
+                                            onChange={e => handleChange({ target: { name: 'goCardlessPaymentsEnabled', value: e.target.checked } })}
+                                        />
+                                        Enable Payments (DD + Instant Bank Pay)
+                                    </label>
+                                </div>
+                            </div>
                         </div>
                     </>
                 )}
@@ -1632,6 +1818,160 @@ const Settings = () => {
             {activeTab === 'payroll' && !payrollSettingsForm && (
                 <div className="entity-form">
                     <p style={{ color: '#888' }}>Loading payroll settings…</p>
+                </div>
+            )}
+
+            {activeTab === 'accountants' && (
+                <div className="entity-form">
+                    <h2>Accountant Access</h2>
+                    <p style={{ color: '#666', marginBottom: '1.5rem' }}>
+                        Invite external accountants to view your company's financial data through the <a href="https://icy-water-0e4886b03.4.azurestaticapps.net" target="_blank" rel="noopener noreferrer">Accountant Portal</a>.
+                    </p>
+
+                    <div style={{ background: '#f9fafb', padding: '1.25rem', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '2rem' }}>
+                        <h3 style={{ marginBottom: '0.75rem', fontSize: '1rem' }}>Invite Accountant</h3>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Email *</label>
+                                <input
+                                    type="email"
+                                    value={inviteForm.email}
+                                    onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))}
+                                    placeholder="accountant@firm.co.uk"
+                                    required
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Name</label>
+                                <input
+                                    type="text"
+                                    value={inviteForm.name}
+                                    onChange={e => setInviteForm(f => ({ ...f, name: e.target.value }))}
+                                    placeholder="Jane Smith"
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Firm</label>
+                                <input
+                                    type="text"
+                                    value={inviteForm.firmName}
+                                    onChange={e => setInviteForm(f => ({ ...f, firmName: e.target.value }))}
+                                    placeholder="Smith & Co Accountants"
+                                />
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            className="btn-primary"
+                            disabled={inviting || !inviteForm.email}
+                            onClick={handleInviteAccountant}
+                            style={{ marginTop: '0.5rem' }}
+                        >
+                            {inviting ? 'Sending…' : '📨 Send Invitation'}
+                        </button>
+
+                        {lastInviteResult && lastInviteResult.inviteLink && (
+                            <div style={{
+                                marginTop: '1rem',
+                                padding: '0.75rem 1rem',
+                                borderRadius: '6px',
+                                background: lastInviteResult.emailSent ? '#dcfce7' : '#fef3c7',
+                                border: `1px solid ${lastInviteResult.emailSent ? '#bbf7d0' : '#fde68a'}`,
+                                fontSize: '0.85rem'
+                            }}>
+                                <strong>{lastInviteResult.emailSent ? 'Email sent!' : 'Share this invite link manually:'}</strong>
+                                <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                    <input
+                                        type="text"
+                                        readOnly
+                                        value={lastInviteResult.inviteLink}
+                                        style={{ flex: 1, fontSize: '0.8rem', padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '4px', background: '#fff' }}
+                                        onClick={e => e.target.select()}
+                                    />
+                                    <button
+                                        type="button"
+                                        className="btn-secondary"
+                                        style={{ fontSize: '0.8rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(lastInviteResult.inviteLink);
+                                            showToast('Invite link copied!');
+                                        }}
+                                    >
+                                        📋 Copy
+                                    </button>
+                                </div>
+                                {!lastInviteResult.emailSent && lastInviteResult.emailError && (
+                                    <p style={{ marginTop: '0.5rem', color: '#92400e', fontSize: '0.8rem' }}>
+                                        Email error: {lastInviteResult.emailError}
+                                    </p>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    <h3 style={{ marginBottom: '0.75rem', fontSize: '1rem' }}>Linked Accountants</h3>
+                    {accountantsLoading ? (
+                        <p style={{ color: '#888' }}>Loading…</p>
+                    ) : accountants.length === 0 ? (
+                        <p style={{ color: '#888' }}>No accountants linked yet. Use the form above to send an invitation.</p>
+                    ) : (
+                        <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr>
+                                    <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '2px solid #e5e7eb' }}>Email</th>
+                                    <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '2px solid #e5e7eb' }}>Name</th>
+                                    <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '2px solid #e5e7eb' }}>Firm</th>
+                                    <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '2px solid #e5e7eb' }}>Status</th>
+                                    <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '2px solid #e5e7eb' }}>Access</th>
+                                    <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '2px solid #e5e7eb' }}>Invited</th>
+                                    <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '2px solid #e5e7eb' }}>Accepted</th>
+                                    <th style={{ padding: '0.5rem', borderBottom: '2px solid #e5e7eb' }}></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {accountants.map(a => (
+                                    <tr key={a.id}>
+                                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f0f0f0' }}>{a.email}</td>
+                                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f0f0f0' }}>{a.name || '—'}</td>
+                                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f0f0f0' }}>{a.firmName || '—'}</td>
+                                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f0f0f0' }}>
+                                            <span style={{
+                                                padding: '2px 8px',
+                                                borderRadius: '12px',
+                                                fontSize: '0.8rem',
+                                                fontWeight: 500,
+                                                background: a.status === 'Active' ? '#dcfce7' : a.status === 'Invited' ? '#fef9c3' : '#fee2e2',
+                                                color: a.status === 'Active' ? '#166534' : a.status === 'Invited' ? '#854d0e' : '#991b1b'
+                                            }}>
+                                                {a.status}
+                                            </span>
+                                        </td>
+                                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f0f0f0', fontSize: '0.85rem', color: '#666' }}>
+                                            {a.accessLevel || 'ReadOnly'}
+                                        </td>
+                                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f0f0f0', fontSize: '0.85rem', color: '#666' }}>
+                                            {a.invitedAt ? new Date(a.invitedAt).toLocaleDateString('en-GB') : '—'}
+                                        </td>
+                                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f0f0f0', fontSize: '0.85rem', color: '#666' }}>
+                                            {a.acceptedAt ? new Date(a.acceptedAt).toLocaleDateString('en-GB') : '—'}
+                                        </td>
+                                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f0f0f0', textAlign: 'right' }}>
+                                            {a.status !== 'Revoked' && (
+                                                <button
+                                                    type="button"
+                                                    className="btn-danger"
+                                                    style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+                                                    onClick={() => handleRevokeAccountant(a.id)}
+                                                >
+                                                    Revoke
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
                 </div>
             )}
         </div>

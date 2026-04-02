@@ -14,7 +14,7 @@ namespace FinanceHubFunctions.Models
         public string? Direction { get; set; } // In / Out
         public decimal? Balance { get; set; }
         public string? ExternalId { get; set; }
-        public string? Source { get; set; } // CSV, Manual, API
+        public string? Source { get; set; } // CSV, Manual, API, TrueLayer
         public bool IsReconciled { get; set; }
         public DateTime? ReconciledOn { get; set; }
         public string? ReconciledBy { get; set; }
@@ -25,5 +25,9 @@ namespace FinanceHubFunctions.Models
         public string? MonzoMerchantName { get; set; }
         public string? MonzoCategory { get; set; }
         public string? MonzoNotes { get; set; }
+        // TrueLayer-specific
+        public string? TrueLayerTransactionId { get; set; }
+        public string? TrueLayerMerchantName { get; set; }
+        public string? TrueLayerCategory { get; set; }
     }
 }

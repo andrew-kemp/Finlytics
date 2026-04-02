@@ -40,6 +40,7 @@ const Expenses = ({ openNew }) => {
     const [trivialSummary, setTrivialSummary] = useState(null);
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [confirmModal, setConfirmModal] = useState(null);
+    const [sourceFilter, setSourceFilter] = useState('all'); // 'all' | 'company' | 'employee'
     // Missing Receipt Declaration
     const [declarationModal, setDeclarationModal] = useState(null); // { expenseId, expense } | null
     const [declarationForm, setDeclarationForm] = useState({});
@@ -93,7 +94,7 @@ const Expenses = ({ openNew }) => {
         try {
             setLoading(true);
             const [expensesData, suppliersData, categoriesData, vatApplicabilitiesData, paymentMethodsData, settingsData] = await Promise.all([
-                getExpenses({ companyOnly: true }).catch(err => { console.error('Error loading expenses:', err); return []; }),
+                getExpenses().catch(err => { console.error('Error loading expenses:', err); return []; }),
                 getSuppliers().catch(err => { console.error('Error loading suppliers:', err); return []; }),
                 getCategories().catch(err => { console.error('Error loading categories:', err); return []; }),
                 getVATApplicabilities().catch(err => { console.error('Error loading VAT applicabilities:', err); return []; }),
@@ -594,12 +595,20 @@ const Expenses = ({ openNew }) => {
 
     const allowDataDeletion = companySettings?.allowDataDeletion === true;
 
+    // Apply source filter (company vs employee claims) on top of the existing isDLA exclusion
+    const displayExpenses = expenses.filter(e => {
+        if (e.isDLA) return false;
+        if (sourceFilter === 'company') return !e.submittedByTeamMemberId;
+        if (sourceFilter === 'employee') return !!e.submittedByTeamMemberId;
+        return true;
+    });
+
     const toggleSelectId = (id) => setSelectedIds(prev => {
         const next = new Set(prev);
         if (next.has(id)) next.delete(id); else next.add(id);
         return next;
     });
-    const selectAllExpenses = () => setSelectedIds(new Set(expenses.filter(e => !e.isDLA).map(e => e.id)));
+    const selectAllExpenses = () => setSelectedIds(new Set(displayExpenses.map(e => e.id)));
     const clearSelection = () => setSelectedIds(new Set());
 
     const handleDeleteExpense = (expense) => {
@@ -1326,6 +1335,16 @@ const Expenses = ({ openNew }) => {
                 <p>Loading expenses...</p>
             ) : (
                 <>
+                    {/* Source filter */}
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151' }}>Source:</span>
+                        {[{key:'all',label:'All'},{key:'company',label:'Company'},{key:'employee',label:'Employee Claims'}].map(f => (
+                            <button key={f.key} onClick={() => setSourceFilter(f.key)}
+                                style={{ padding: '0.25rem 0.75rem', borderRadius: 16, border: sourceFilter === f.key ? '2px solid #2563eb' : '1px solid #d1d5db',
+                                    background: sourceFilter === f.key ? '#eff6ff' : '#fff', color: sourceFilter === f.key ? '#2563eb' : '#374151',
+                                    fontWeight: sourceFilter === f.key ? 700 : 400, fontSize: '0.82rem', cursor: 'pointer' }}>{f.label}</button>
+                        ))}
+                    </div>
                     {/* Bulk action bar — only when allowDataDeletion and items selected */}
                     {allowDataDeletion && selectedIds.size > 0 && (
                         <div style={{ background: '#fdf2f2', border: '1px solid #f5c2c7', borderRadius: 6, padding: '0.6rem 1rem', display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
@@ -1339,15 +1358,15 @@ const Expenses = ({ openNew }) => {
                             {allowDataDeletion && (
                                 <div className="mobile-select-bar">
                                     <span>{selectedIds.size > 0 ? `${selectedIds.size} selected` : 'Tap ☑ to select'}</span>
-                                    {selectedIds.size < expenses.filter(e => !e.isDLA).length
+                                    {selectedIds.size < displayExpenses.length
                                         ? <button onClick={selectAllExpenses}>Select All</button>
                                         : <button onClick={clearSelection}>✕ Clear</button>
                                     }
                                 </div>
                             )}
-                            {expenses.filter(e => !e.isDLA).length === 0 ? (
+                            {displayExpenses.length === 0 ? (
                                 <div className="mobile-empty">No expenses yet.<br />Tap <strong>+ Add Expense</strong> to get started.</div>
-                            ) : expenses.filter(e => !e.isDLA).map(expense => (
+                            ) : displayExpenses.map(expense => (
                                 <div key={expense.id} className="mobile-card" onClick={() => handleViewExpense(expense)}>
                                     <div className="card-header">
                                         <span className="card-id">{expense.expenseId || expense.id}</span>
@@ -1357,6 +1376,7 @@ const Expenses = ({ openNew }) => {
                                         <div className="card-main-row">
                                             <span>{expense.supplier || '—'}</span>
                                             {expense.ctTag === 'NonCT' && <span className="badge badge-red">Non-CT</span>}
+                                            {expense.submittedByTeamMemberId && <span className="badge" style={{ background: '#ede9fe', color: '#7c3aed', border: '1px solid #c4b5fd' }}>Employee</span>}
                                         </div>
                                         <div className="card-meta-row">
                                             <span>
@@ -1397,7 +1417,7 @@ const Expenses = ({ openNew }) => {
                                 <th style={{ width: 40, textAlign: 'center' }}>
                                     <input type="checkbox" data-bwignore="true" autoComplete="off" title="Select All"
                                         onChange={e => e.target.checked ? selectAllExpenses() : clearSelection()}
-                                        checked={selectedIds.size > 0 && expenses.filter(e => !e.isDLA).every(e => selectedIds.has(e.id))}
+                                        checked={selectedIds.size > 0 && displayExpenses.every(e => selectedIds.has(e.id))}
                                     />
                                 </th>
                             )}
@@ -1411,11 +1431,12 @@ const Expenses = ({ openNew }) => {
                             <th>Gross</th>
                             <th>Tax Year</th>
                             <th>FY</th>
+                            <th>Source</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {Array.isArray(expenses) && expenses.filter(e => !e.isDLA).map(expense => (
+                        {Array.isArray(expenses) && displayExpenses.map(expense => (
                             <tr key={expense.id} onClick={() => handleViewExpense(expense)} style={{ cursor: 'pointer', background: selectedIds.has(expense.id) ? 'rgba(220,53,69,0.05)' : undefined }}>
                                 {allowDataDeletion && (
                                     <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
@@ -1444,6 +1465,11 @@ const Expenses = ({ openNew }) => {
                                 <td>£{expense.amountGross?.toFixed(2)}</td>
                                 <td>{expense.taxYear || ''}</td>
                                 <td>{expense.financialYear || ''}</td>
+                                <td>
+                                    {expense.submittedByTeamMemberId
+                                        ? <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#fff', backgroundColor: '#7c3aed', padding: '1px 6px', borderRadius: '10px' }}>Employee</span>
+                                        : <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#fff', backgroundColor: '#6b7280', padding: '1px 6px', borderRadius: '10px' }}>Company</span>}
+                                </td>
                                 <td onClick={e => e.stopPropagation()}>
                                     <button 
                                         onClick={() => handleEdit(expense)} 
@@ -1491,7 +1517,7 @@ const Expenses = ({ openNew }) => {
 
                     {/* CT Summary */}
                     {(() => {
-                        const nonDlaExpenses = expenses.filter(e => !e.isDLA);
+                        const nonDlaExpenses = displayExpenses;
                         const ctTotal    = nonDlaExpenses.filter(e => e.ctTag !== 'NonCT').reduce((s, e) => s + (e.amountNet || 0), 0);
                         const nonCtTotal = nonDlaExpenses.filter(e => e.ctTag === 'NonCT').reduce((s, e) => s + (e.amountNet || 0), 0);
                         const total      = nonDlaExpenses.reduce((s, e) => s + (e.amountNet || 0), 0);

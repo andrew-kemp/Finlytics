@@ -18,5 +18,9 @@ namespace FinanceHubFunctions.Models
         public int? DefaultVATRate { get; set; } // Changed to int? to match frontend
         public string? ContactName { get; set; }  // Primary contact name — shown on invoices/quotes
         public string? CcEmail { get; set; }       // CC email — auto-BCC'd on all outbound emails
+        // GoCardless Direct Debit mandate
+        public string? GoCardlessMandateId { get; set; }
+        public string? GoCardlessCustomerId { get; set; }
+        public string? GoCardlessMandateStatus { get; set; } // pending_submission, submitted, active, failed, cancelled
     }
 }

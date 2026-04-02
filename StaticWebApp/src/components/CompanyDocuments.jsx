@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { getCompanyDocuments, uploadDocument, deleteDocument, downloadDocument, downloadDocumentPdf, getCompanySettings, updateCompanySettings } from '../services/apiService';
+import Toast from './Toast';
+import { useToast } from '../hooks/useToast';
 
 const CompanyDocuments = () => {
+  const { toast, showToast, clearToast } = useToast();
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -24,6 +27,11 @@ const CompanyDocuments = () => {
   // Edit state
   const [editingDoc, setEditingDoc] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
+
+  // File details modal state
+  const [detailsDoc, setDetailsDoc] = useState(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [settingLogo, setSettingLogo] = useState('');
 
   const documentTypes = [
     'Company Logo',
@@ -73,7 +81,7 @@ const CompanyDocuments = () => {
       setDocuments(data);
     } catch (error) {
       console.error('Error loading documents:', error);
-      alert('Failed to load documents');
+      showToast('Failed to load documents', 'error');
     } finally {
       setLoading(false);
     }
@@ -86,7 +94,7 @@ const CompanyDocuments = () => {
 
   const handleUpload = async () => {
     if (!selectedFile) {
-      alert('Please select a file to upload');
+      showToast('Please select a file to upload', 'error');
       return;
     }
 
@@ -119,7 +127,7 @@ const CompanyDocuments = () => {
           console.error('Error updating company logo URL:', logoError);
         }
       }
-      alert('Document uploaded successfully');
+      showToast('Document uploaded successfully');
       
       // Reset form
       setSelectedFile(null);
@@ -136,7 +144,7 @@ const CompanyDocuments = () => {
       await loadDocuments();
     } catch (error) {
       console.error('Error uploading document:', error);
-      alert('Failed to upload document: ' + error.message);
+      showToast('Failed to upload document: ' + error.message, 'error');
     } finally {
       setUploading(false);
     }
@@ -158,7 +166,7 @@ const CompanyDocuments = () => {
       document.body.removeChild(a);
     } catch (error) {
       console.error('Error downloading document:', error);
-      alert('Failed to download document: ' + error.message);
+      showToast('Failed to download document: ' + error.message, 'error');
     }
   };
 
@@ -178,7 +186,7 @@ const CompanyDocuments = () => {
       setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
     } catch (error) {
       console.error('Error viewing document:', error);
-      alert('Failed to view document: ' + error.message);
+      showToast('Failed to view document: ' + error.message, 'error');
     }
   };
 
@@ -193,11 +201,11 @@ const CompanyDocuments = () => {
     try {
       setLoading(true);
       await deleteDocument(doc.blobName || doc.url);
-      alert('Document deleted successfully');
+      showToast('Document deleted successfully');
       await loadDocuments();
     } catch (error) {
       console.error('Error deleting document:', error);
-      alert('Failed to delete document: ' + error.message);
+      showToast('Failed to delete document: ' + error.message, 'error');
     } finally {
       setLoading(false);
     }
@@ -206,6 +214,34 @@ const CompanyDocuments = () => {
   const handleEdit = (doc) => {
     setEditingDoc({...doc});
     setShowEditModal(true);
+  };
+
+  const isImageFile = (doc) => {
+    const fileName = (doc.fileName || doc.name || '').toLowerCase();
+    const contentType = (doc.contentType || '').toLowerCase();
+    return /\.(jpg|jpeg|png|gif|svg|webp|bmp)$/.test(fileName)
+      || contentType.startsWith('image/');
+  };
+
+  const handleSetAsLogo = async (doc, logoType) => {
+    if (!doc.url || !companySettings) return;
+    setSettingLogo(logoType);
+    try {
+      const updated = { ...companySettings };
+      if (logoType === 'email') {
+        updated.emailLogoUrl = doc.url;
+      } else if (logoType === 'document') {
+        updated.documentLogoUrl = doc.url;
+      }
+      await updateCompanySettings(updated);
+      setCompanySettings(updated);
+      showToast(`${logoType === 'email' ? 'Email' : 'Document'} logo updated successfully!`);
+    } catch (error) {
+      console.error('Error setting logo:', error);
+      showToast('Failed to update logo: ' + error.message, 'error');
+    } finally {
+      setSettingLogo('');
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -231,12 +267,12 @@ const CompanyDocuments = () => {
         throw new Error('Failed to update document');
       }
 
-      alert('Document updated successfully');
+      showToast('Document updated successfully');
       setShowEditModal(false);
       await loadDocuments();
     } catch (error) {
       console.error('Error updating document:', error);
-      alert('Failed to update document: ' + error.message);
+      showToast('Failed to update document: ' + error.message, 'error');
     }
   };
 
@@ -348,6 +384,7 @@ const CompanyDocuments = () => {
 
   return (
     <div>
+      <Toast toast={toast} onClose={clearToast} />
       <h2>📁 Documents</h2>
 
       {/* Tab Navigation */}
@@ -686,8 +723,13 @@ const CompanyDocuments = () => {
                     key={index}
                     style={{
                       borderBottom: '1px solid #dee2e6',
-                      backgroundColor: index % 2 === 0 ? 'white' : '#f8f9fa'
+                      backgroundColor: index % 2 === 0 ? 'white' : '#f8f9fa',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.15s'
                     }}
+                    onClick={() => { setDetailsDoc(doc); setShowDetailsModal(true); }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#e7f3ff'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = index % 2 === 0 ? 'white' : '#f8f9fa'}
                   >
                     <td style={{ padding: '12px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -721,7 +763,7 @@ const CompanyDocuments = () => {
                     </td>
                     <td style={{ padding: '12px', fontSize: '13px' }}>{formatDate(doc.documentDate)}</td>
                     <td style={{ padding: '12px' }}>{formatFileSize(doc.sizeInBytes || doc.size || 0)}</td>
-                    <td style={{ padding: '12px', textAlign: 'center' }}>
+                    <td style={{ padding: '12px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                       <button
                         onClick={() => handleView(doc)}
                         title="View"
@@ -782,6 +824,273 @@ const CompanyDocuments = () => {
           </div>
         )}
       </div>
+      )}
+
+      {/* File Details Modal */}
+      {showDetailsModal && detailsDoc && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }} onClick={() => setShowDetailsModal(false)}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '30px',
+            borderRadius: '12px',
+            maxWidth: '600px',
+            width: '90%',
+            maxHeight: '85vh',
+            overflowY: 'auto',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
+          }} onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+              <div>
+                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '24px' }}>{getFileIcon(detailsDoc.fileName || detailsDoc.name || 'unknown')}</span>
+                  {detailsDoc.fileName || detailsDoc.name || 'Unknown'}
+                </h3>
+                <span style={{
+                  display: 'inline-block',
+                  marginTop: '6px',
+                  padding: '3px 10px',
+                  backgroundColor: '#e7f3ff',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  color: '#0066cc'
+                }}>
+                  {detailsDoc.documentType || 'Other'}
+                </span>
+              </div>
+              <button
+                onClick={() => setShowDetailsModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '22px',
+                  cursor: 'pointer',
+                  color: '#6c757d',
+                  padding: '0 4px'
+                }}
+              >✖</button>
+            </div>
+
+            {/* Image Preview */}
+            {isImageFile(detailsDoc) && detailsDoc.url && (
+              <div style={{
+                marginBottom: '20px',
+                padding: '16px',
+                background: '#f8f9fa',
+                borderRadius: '8px',
+                textAlign: 'center'
+              }}>
+                <img
+                  src={detailsDoc.url}
+                  alt={detailsDoc.fileName || 'Preview'}
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '200px',
+                    borderRadius: '6px',
+                    objectFit: 'contain',
+                    border: '1px solid #dee2e6'
+                  }}
+                />
+              </div>
+            )}
+
+            {/* File Details */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '140px 1fr',
+              gap: '8px 12px',
+              fontSize: '14px',
+              marginBottom: '20px'
+            }}>
+              <div style={{ fontWeight: 'bold', color: '#6c757d' }}>Size</div>
+              <div>{formatFileSize(detailsDoc.sizeInBytes || detailsDoc.size || 0)}</div>
+
+              <div style={{ fontWeight: 'bold', color: '#6c757d' }}>Uploaded</div>
+              <div>{formatDate(detailsDoc.uploadDate)}</div>
+
+              {detailsDoc.documentDate && (
+                <>
+                  <div style={{ fontWeight: 'bold', color: '#6c757d' }}>Document Date</div>
+                  <div>{formatDate(detailsDoc.documentDate)}</div>
+                </>
+              )}
+
+              {detailsDoc.expiryDate && (
+                <>
+                  <div style={{ fontWeight: 'bold', color: '#6c757d' }}>Expiry Date</div>
+                  <div>{formatDate(detailsDoc.expiryDate)}</div>
+                </>
+              )}
+
+              {detailsDoc.contentType && (
+                <>
+                  <div style={{ fontWeight: 'bold', color: '#6c757d' }}>Content Type</div>
+                  <div>{detailsDoc.contentType}</div>
+                </>
+              )}
+
+              {detailsDoc.personName && (
+                <>
+                  <div style={{ fontWeight: 'bold', color: '#6c757d' }}>Person</div>
+                  <div>{detailsDoc.personName}{detailsDoc.personTitle ? ` (${detailsDoc.personTitle})` : ''}</div>
+                </>
+              )}
+
+              {detailsDoc.relatedEntity && (
+                <>
+                  <div style={{ fontWeight: 'bold', color: '#6c757d' }}>Related Entity</div>
+                  <div>{detailsDoc.relatedEntity}</div>
+                </>
+              )}
+
+              <div style={{ fontWeight: 'bold', color: '#6c757d' }}>Active</div>
+              <div>{detailsDoc.isActive ? '✅ Yes' : '— No'}</div>
+
+              {detailsDoc.notes && (
+                <>
+                  <div style={{ fontWeight: 'bold', color: '#6c757d' }}>Notes</div>
+                  <div>{detailsDoc.notes}</div>
+                </>
+              )}
+            </div>
+
+            {/* Current Logo Status (if image) */}
+            {isImageFile(detailsDoc) && detailsDoc.url && companySettings && (
+              <div style={{
+                marginBottom: '20px',
+                padding: '12px 16px',
+                background: '#f0f9ff',
+                borderRadius: '8px',
+                border: '1px solid #bae6fd',
+                fontSize: '13px'
+              }}>
+                <div style={{ fontWeight: 'bold', marginBottom: '6px', color: '#0369a1' }}>🔗 Current Logo Settings</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <div>
+                    <strong>Email Logo:</strong>{' '}
+                    {companySettings.emailLogoUrl === detailsDoc.url
+                      ? <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✅ Using this image</span>
+                      : <span style={{ color: '#6b7280' }}>{companySettings.emailLogoUrl ? 'Set to another image' : 'Not set (using default)'}</span>
+                    }
+                  </div>
+                  <div>
+                    <strong>Document Logo:</strong>{' '}
+                    {companySettings.documentLogoUrl === detailsDoc.url
+                      ? <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✅ Using this image</span>
+                      : <span style={{ color: '#6b7280' }}>{companySettings.documentLogoUrl ? 'Set to another image' : 'Not set (using default)'}</span>
+                    }
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Set as Logo Buttons (image files only) */}
+            {isImageFile(detailsDoc) && detailsDoc.url && (
+              <div style={{
+                display: 'flex',
+                gap: '10px',
+                marginBottom: '16px',
+                flexWrap: 'wrap'
+              }}>
+                <button
+                  onClick={() => handleSetAsLogo(detailsDoc, 'email')}
+                  disabled={settingLogo !== '' || (companySettings?.emailLogoUrl === detailsDoc.url)}
+                  style={{
+                    flex: 1,
+                    padding: '12px 16px',
+                    backgroundColor: companySettings?.emailLogoUrl === detailsDoc.url ? '#e5e7eb' : '#7c3aed',
+                    color: companySettings?.emailLogoUrl === detailsDoc.url ? '#9ca3af' : 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: companySettings?.emailLogoUrl === detailsDoc.url ? 'default' : 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '14px'
+                  }}
+                >
+                  {settingLogo === 'email' ? 'Setting…'
+                    : companySettings?.emailLogoUrl === detailsDoc.url ? '✅ Email Logo (current)'
+                    : '📧 Set as Email Logo'}
+                </button>
+                <button
+                  onClick={() => handleSetAsLogo(detailsDoc, 'document')}
+                  disabled={settingLogo !== '' || (companySettings?.documentLogoUrl === detailsDoc.url)}
+                  style={{
+                    flex: 1,
+                    padding: '12px 16px',
+                    backgroundColor: companySettings?.documentLogoUrl === detailsDoc.url ? '#e5e7eb' : '#2563eb',
+                    color: companySettings?.documentLogoUrl === detailsDoc.url ? '#9ca3af' : 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: companySettings?.documentLogoUrl === detailsDoc.url ? 'default' : 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '14px'
+                  }}
+                >
+                  {settingLogo === 'document' ? 'Setting…'
+                    : companySettings?.documentLogoUrl === detailsDoc.url ? '✅ Document Logo (current)'
+                    : '📄 Set as Document Logo'}
+                </button>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', borderTop: '1px solid #e5e7eb', paddingTop: '16px' }}>
+              <button
+                onClick={() => { handleView(detailsDoc); }}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#f0f9ff',
+                  color: '#0369a1',
+                  border: '1px solid #bae6fd',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                👁️ View
+              </button>
+              <button
+                onClick={() => { handleDownload(detailsDoc); }}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#f0fdf4',
+                  color: '#15803d',
+                  border: '1px solid #bbf7d0',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                ⬇️ Download
+              </button>
+              <button
+                onClick={() => setShowDetailsModal(false)}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer'
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Edit Modal */}

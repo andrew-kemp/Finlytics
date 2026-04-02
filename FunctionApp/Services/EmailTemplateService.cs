@@ -389,16 +389,40 @@ namespace FinanceHubFunctions.Services
             }
             else
             {
-                try
+                // Prefer EmailLogoUrl, then blob search, then LogoUrl fallback
+                if (!string.IsNullOrWhiteSpace(company.EmailLogoUrl))
                 {
-                    if (_blobStorageService != null)
+                    try
                     {
-                        logoDataUrl = await _blobStorageService.GetLogoBase64Async(company.Id) ?? "";
+                        if (_blobStorageService != null)
+                        {
+                            var (bytes, logoContentType) = await _blobStorageService.GetLogoBytesFromUrlAsync(company.EmailLogoUrl);
+                            if (bytes != null && bytes.Length > 0)
+                            {
+                                var mimeType = logoContentType ?? "image/png";
+                                logoDataUrl = $"data:{mimeType};base64,{Convert.ToBase64String(bytes)}";
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Fall through to blob search
                     }
                 }
-                catch
+
+                if (string.IsNullOrWhiteSpace(logoDataUrl))
                 {
-                    // Logo failed to load - continue without it
+                    try
+                    {
+                        if (_blobStorageService != null)
+                        {
+                            logoDataUrl = await _blobStorageService.GetLogoBase64Async(company.Id) ?? "";
+                        }
+                    }
+                    catch
+                    {
+                        // Logo failed to load - continue without it
+                    }
                 }
 
                 if (string.IsNullOrWhiteSpace(logoDataUrl) && !string.IsNullOrWhiteSpace(company.LogoUrl))

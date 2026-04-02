@@ -468,6 +468,40 @@ namespace FinanceHubFunctions.Services
         }
 
         /// <summary>
+        /// Gets logo bytes from a specific blob URL (used for DocumentLogoUrl/EmailLogoUrl).
+        /// Extracts the blob path from the URL and downloads from the same storage account.
+        /// </summary>
+        public async Task<(byte[]? Bytes, string? ContentType)> GetLogoBytesFromUrlAsync(string logoUrl)
+        {
+            try
+            {
+                // The URL is a blob storage URL — extract container and blob path
+                var uri = new Uri(logoUrl);
+                var pathSegments = uri.AbsolutePath.TrimStart('/').Split('/', 2);
+                if (pathSegments.Length < 2)
+                    return (null, null);
+
+                var containerName = Uri.UnescapeDataString(pathSegments[0]);
+                var blobPath = Uri.UnescapeDataString(pathSegments[1]);
+
+                var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+                var blobClient = containerClient.GetBlobClient(blobPath);
+
+                if (!await blobClient.ExistsAsync())
+                    return (null, null);
+
+                var downloadResult = await blobClient.DownloadContentAsync();
+                var properties = await blobClient.GetPropertiesAsync();
+                return (downloadResult.Value.Content.ToArray(), properties.Value.ContentType);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading logo from URL {logoUrl}: {ex.Message}");
+                return (null, null);
+            }
+        }
+
+        /// <summary>
         /// Gets the active company logo directly from blob storage with authentication
         /// Returns tuple of (bytes, contentType)
         /// </summary>

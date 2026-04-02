@@ -46,6 +46,11 @@ namespace FinanceHubFunctions.Data
         public DbSet<TeamMember> TeamMembers { get; set; }
         public DbSet<Accountant> Accountants { get; set; }
         public DbSet<CompanyAccountant> CompanyAccountants { get; set; }
+        public DbSet<RecurringInvoiceTemplate> RecurringInvoiceTemplates { get; set; }
+        public DbSet<CategorizationRule> CategorizationRules { get; set; }
+        public DbSet<GoCardlessMandate> GoCardlessMandates { get; set; }
+        public DbSet<GoCardlessPayment> GoCardlessPayments { get; set; }
+        public DbSet<Bill> Bills { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -438,6 +443,8 @@ namespace FinanceHubFunctions.Data
                 entity.Property(e => e.Currency).HasMaxLength(10);
                 entity.Property(e => e.OpeningBalance).HasColumnType("decimal(18,2)");
                 entity.Property(e => e.Notes).HasMaxLength(2000);
+                entity.Property(e => e.TrueLayerAccountId).HasMaxLength(255);
+                entity.Property(e => e.TrueLayerProvider).HasMaxLength(255);
                 entity.HasIndex(e => e.AccountName);
             });
 
@@ -455,6 +462,9 @@ namespace FinanceHubFunctions.Data
                 entity.Property(e => e.Balance).HasColumnType("decimal(18,2)");
                 entity.Property(e => e.ExternalId).HasMaxLength(255);
                 entity.Property(e => e.Source).HasMaxLength(50);
+                entity.Property(e => e.TrueLayerTransactionId).HasMaxLength(255);
+                entity.Property(e => e.TrueLayerMerchantName).HasMaxLength(500);
+                entity.Property(e => e.TrueLayerCategory).HasMaxLength(100);
                 entity.Property(e => e.ReconciledBy).HasMaxLength(255);
                 entity.HasIndex(e => e.BankAccountId);
                 entity.HasIndex(e => e.TransactionDate);
@@ -833,6 +843,130 @@ namespace FinanceHubFunctions.Data
                 entity.HasIndex(e => e.CompanyId);
                 entity.HasIndex(e => e.InviteToken);
                 entity.HasIndex(e => new { e.CompanyId, e.AccountantId }).IsUnique();
+            });
+
+            // RecurringInvoiceTemplate configuration
+            modelBuilder.Entity<RecurringInvoiceTemplate>(entity =>
+            {
+                entity.ToTable("RecurringInvoiceTemplates");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).ValueGeneratedOnAdd();
+                entity.Property(e => e.CustomerId).HasMaxLength(50);
+                entity.Property(e => e.CustomerName).HasMaxLength(255);
+                entity.Property(e => e.BillingEmail).HasMaxLength(255);
+                entity.Property(e => e.POReference).HasMaxLength(255);
+                entity.Property(e => e.VatNumber).HasMaxLength(50);
+                entity.Property(e => e.Frequency).HasMaxLength(20);
+                entity.Property(e => e.Notes).HasMaxLength(2000);
+                entity.Property(e => e.DiscountPercent).HasColumnType("decimal(5,2)");
+                entity.Property(e => e.DiscountAmount).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.DiscountNote).HasMaxLength(500);
+                entity.Property(e => e.DefaultLineItems)
+                    .HasColumnType("nvarchar(max)")
+                    .HasConversion(
+                        v => v == null || v.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                        v => string.IsNullOrEmpty(v) ? new List<InvoiceLine>() : System.Text.Json.JsonSerializer.Deserialize<List<InvoiceLine>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<InvoiceLine>()
+                    );
+                entity.HasIndex(e => e.IsActive);
+                entity.HasIndex(e => e.NextRunDate);
+            });
+
+            // CategorizationRule configuration
+            modelBuilder.Entity<CategorizationRule>(entity =>
+            {
+                entity.ToTable("CategorizationRules");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).ValueGeneratedOnAdd();
+                entity.Property(e => e.Name).HasMaxLength(255);
+                entity.Property(e => e.MatchPattern).HasMaxLength(500);
+                entity.Property(e => e.MatchField).HasMaxLength(50);
+                entity.Property(e => e.Direction).HasMaxLength(10);
+                entity.Property(e => e.AmountMin).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.AmountMax).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.TargetCategory).HasMaxLength(100);
+                entity.HasIndex(e => e.IsActive);
+                entity.HasIndex(e => e.Priority);
+            });
+
+            // GoCardless Mandate configuration
+            modelBuilder.Entity<GoCardlessMandate>(entity =>
+            {
+                entity.ToTable("GoCardlessMandates");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).ValueGeneratedOnAdd();
+                entity.Property(e => e.CustomerId).HasMaxLength(50);
+                entity.Property(e => e.CustomerName).HasMaxLength(255);
+                entity.Property(e => e.GoCardlessMandateId).HasMaxLength(100);
+                entity.Property(e => e.GoCardlessCustomerId).HasMaxLength(100);
+                entity.Property(e => e.Status).HasMaxLength(50);
+                entity.Property(e => e.Scheme).HasMaxLength(20);
+                entity.Property(e => e.BankAccountHolder).HasMaxLength(255);
+                entity.Property(e => e.BankAccountEndDigits).HasMaxLength(10);
+                entity.Property(e => e.Reference).HasMaxLength(100);
+                entity.HasIndex(e => e.CustomerId);
+                entity.HasIndex(e => e.GoCardlessMandateId);
+                entity.HasIndex(e => e.Status);
+            });
+
+            // GoCardless Payment configuration
+            modelBuilder.Entity<GoCardlessPayment>(entity =>
+            {
+                entity.ToTable("GoCardlessPayments");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).ValueGeneratedOnAdd();
+                entity.Property(e => e.InvoiceNumber).HasMaxLength(50);
+                entity.Property(e => e.GoCardlessPaymentId).HasMaxLength(100);
+                entity.Property(e => e.GoCardlessMandateId).HasMaxLength(100);
+                entity.Property(e => e.Amount).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.Currency).HasMaxLength(10);
+                entity.Property(e => e.Description).HasMaxLength(500);
+                entity.Property(e => e.Status).HasMaxLength(50);
+                entity.Property(e => e.FailureReason).HasMaxLength(500);
+                entity.HasIndex(e => e.InvoiceId);
+                entity.HasIndex(e => e.GoCardlessPaymentId);
+                entity.HasIndex(e => e.Status);
+            });
+
+            // Bill / Accounts Payable configuration
+            modelBuilder.Entity<Bill>(entity =>
+            {
+                entity.ToTable("Bills");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).ValueGeneratedOnAdd();
+                entity.Property(e => e.BillNumber).HasMaxLength(50);
+                entity.Property(e => e.SupplierId).HasMaxLength(50);
+                entity.Property(e => e.SupplierName).HasMaxLength(255);
+                entity.Property(e => e.SupplierReference).HasMaxLength(100);
+                entity.Property(e => e.Status).HasMaxLength(50);
+                entity.Property(e => e.AmountNet).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.VATAmount).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.AmountGross).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.AmountPaid).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.VATApplicability).HasMaxLength(50);
+                entity.Property(e => e.Currency).HasMaxLength(10);
+                entity.Property(e => e.Category).HasMaxLength(100);
+                entity.Property(e => e.CtTag).HasMaxLength(20);
+                entity.Property(e => e.PaymentMethod).HasMaxLength(100);
+                entity.Property(e => e.TaxYear).HasMaxLength(20);
+                entity.Property(e => e.FinancialYear).HasMaxLength(20);
+                entity.Property(e => e.DocumentUrl).HasMaxLength(2048);
+                entity.Property(e => e.PaymentReference).HasMaxLength(100);
+                entity.Property(e => e.RecurringFrequency).HasMaxLength(50);
+                entity.Property(e => e.ApprovedBy).HasMaxLength(255);
+
+                entity.Property(e => e.LineItems).HasConversion(
+                    v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                    v => System.Text.Json.JsonSerializer.Deserialize<System.Collections.Generic.List<BillLine>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new()
+                );
+                entity.Property(e => e.Attachments).HasConversion(
+                    v => v == null ? null : System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                    v => v == null ? null : System.Text.Json.JsonSerializer.Deserialize<System.Collections.Generic.List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null)
+                );
+
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.SupplierId);
+                entity.HasIndex(e => e.DueDate);
+                entity.HasIndex(e => e.BillNumber);
             });
         }
     }

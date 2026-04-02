@@ -25,11 +25,20 @@ namespace FinanceHubFunctions.Services
             string currencySymbol = !string.IsNullOrEmpty(company.CurrencySymbol) ? company.CurrencySymbol : "£";
 
             // Get logo directly from blob storage with authentication
+            // Prefer DocumentLogoUrl if set, then fall back to blob search
             byte[] logoBytes = null;
             try
             {
-                var (bytes, _) = await _blobStorageService.GetLogoAsync(company.Id);
-                logoBytes = bytes;
+                if (!string.IsNullOrWhiteSpace(company.DocumentLogoUrl))
+                {
+                    var (bytes, _) = await _blobStorageService.GetLogoBytesFromUrlAsync(company.DocumentLogoUrl);
+                    logoBytes = bytes;
+                }
+                if (logoBytes == null)
+                {
+                    var (bytes, _) = await _blobStorageService.GetLogoAsync(company.Id);
+                    logoBytes = bytes;
+                }
             }
             catch
             {
@@ -368,11 +377,20 @@ namespace FinanceHubFunctions.Services
             string currencySymbol = !string.IsNullOrEmpty(company.CurrencySymbol) ? company.CurrencySymbol : "£";
 
             // Get logo directly from blob storage with authentication
+            // Prefer DocumentLogoUrl if set, then fall back to blob search
             byte[] logoBytes = null;
             try
             {
-                var (bytes, _) = await _blobStorageService.GetLogoAsync(company.Id);
-                logoBytes = bytes;
+                if (!string.IsNullOrWhiteSpace(company.DocumentLogoUrl))
+                {
+                    var (bytes, _) = await _blobStorageService.GetLogoBytesFromUrlAsync(company.DocumentLogoUrl);
+                    logoBytes = bytes;
+                }
+                if (logoBytes == null)
+                {
+                    var (bytes, _) = await _blobStorageService.GetLogoAsync(company.Id);
+                    logoBytes = bytes;
+                }
             }
             catch
             {

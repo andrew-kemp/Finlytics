@@ -340,6 +340,169 @@ namespace FinanceHubFunctions.Functions
             }
         }
 
+        [Function("QuickInvoice")]
+        public async Task<HttpResponseData> QuickInvoice(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "invoices/quick")] HttpRequestData req)
+        {
+            _logger.LogInformation("QuickInvoice function triggered");
+
+            try
+            {
+                var body = await new StreamReader(req.Body).ReadToEndAsync();
+                var payload = JsonSerializer.Deserialize<JsonElement>(body);
+
+                var customerId = payload.GetProperty("customerId").GetString();
+                var days = payload.GetProperty("days").GetDecimal();
+                var description = payload.TryGetProperty("description", out var descEl) ? descEl.GetString() : null;
+                var sendEmail = payload.TryGetProperty("sendEmail", out var sendEl) && sendEl.GetBoolean();
+                var rateOverride = payload.TryGetProperty("rate", out var rateEl) ? rateEl.GetDecimal() : (decimal?)null;
+                var vatRateOverride = payload.TryGetProperty("vatRate", out var vatEl) ? vatEl.GetInt32() : (int?)null;
+
+                // Lookup customer
+                var customer = await _customerRepository.GetByIdAsync(customerId);
+                if (customer == null)
+                {
+                    var notFound = req.CreateResponse(HttpStatusCode.BadRequest);
+                    await notFound.WriteStringAsync("Customer not found");
+                    return notFound;
+                }
+
+                // Determine rate
+                decimal dayRate = rateOverride ?? 0;
+                if (dayRate == 0 && !string.IsNullOrWhiteSpace(customer.DefaultDayRate))
+                    decimal.TryParse(customer.DefaultDayRate, out dayRate);
+                if (dayRate == 0)
+                {
+                    var badRate = req.CreateResponse(HttpStatusCode.BadRequest);
+                    await badRate.WriteStringAsync("No day rate specified and customer has no default day rate configured");
+                    return badRate;
+                }
+
+                int vatRate = vatRateOverride ?? customer.DefaultVATRate ?? 20;
+                decimal amountNet = days * dayRate;
+                decimal vatAmount = Math.Round(amountNet * vatRate / 100m, 2);
+                decimal amountGross = amountNet + vatAmount;
+
+                // Get company settings for terms
+                var company = await _companySettingsRepository.GetDefaultAsync();
+                int paymentDays = 30;
+                if (company != null && !string.IsNullOrEmpty(company.InvoiceTermsDays) && int.TryParse(company.InvoiceTermsDays, out int parsed))
+                    paymentDays = parsed;
+
+                var now = DateTime.UtcNow;
+                var lineDescription = description ?? $"Consultancy services — {days} day{(days != 1 ? "s" : "")}";
+
+                // Generate next invoice number (same logic as GetNextInvoiceNumber)
+                var allInvoices = await _invoiceRepository.GetAllAsync();
+                var currentPeriod = now.ToString("yyyyMM");
+                var invoicesThisPeriod = allInvoices
+                    .Where(i => i.InvoiceNumber != null && i.InvoiceNumber.StartsWith($"INV-{currentPeriod}"))
+                    .ToList();
+                int nextNum = 1;
+                if (invoicesThisPeriod.Any())
+                {
+                    var lastNumberPart = invoicesThisPeriod.OrderByDescending(i => i.InvoiceNumber).First().InvoiceNumber?.Split('-').LastOrDefault();
+                    if (int.TryParse(lastNumberPart, out int lastN)) nextNum = lastN + 1;
+                }
+                var invoiceNumber = $"INV-{currentPeriod}-{nextNum:D3}";
+
+                var invoice = new Invoice
+                {
+                    InvoiceNumber = invoiceNumber,
+                    CustomerId = customer.Id,
+                    CustomerName = customer.Name ?? customer.CustomerName,
+                    BillingEmail = customer.BillingEmail ?? customer.Email,
+                    POReference = string.Empty,
+                    DateIssued = now,
+                    DueDate = now.AddDays(paymentDays),
+                    Status = "Issued",
+                    AmountNet = amountNet,
+                    VATAmount = vatAmount,
+                    AmountGross = amountGross,
+                    VatNumber = company?.VATNumber,
+                    LineItems = new List<InvoiceLine>
+                    {
+                        new InvoiceLine
+                        {
+                            LineNumber = 1,
+                            Description = lineDescription,
+                            RateType = "Day Rate",
+                            Quantity = days,
+                            Rate = dayRate,
+                            VATRate = vatRate,
+                            LineTotal = amountNet
+                        }
+                    }
+                };
+
+                // Create invoice
+                var created = await _invoiceRepository.CreateAsync(invoice);
+                _logger.LogInformation($"Quick invoice created: {created.InvoiceNumber} for {customer.Name}");
+
+                // Generate & upload PDF
+                string pdfUrl = null;
+                byte[] pdfBytes = null;
+                try
+                {
+                    pdfBytes = await _pdfService.GenerateInvoicePdfAsync(created, company, customer);
+                    pdfUrl = await _blobStorageService.UploadInvoicePdfAsync(
+                        created.InvoiceNumber, pdfBytes,
+                        customer.CustomerCode ?? customer.Code,
+                        customer.Name, created.DateIssued);
+                    created.PdfUrl = pdfUrl;
+                    await _invoiceRepository.UpdateAsync(created);
+                }
+                catch (Exception pdfEx)
+                {
+                    _logger.LogError($"Quick invoice PDF error: {pdfEx.Message}");
+                }
+
+                // Send email if requested
+                bool emailSent = false;
+                string emailError = null;
+                if (sendEmail && pdfBytes != null)
+                {
+                    var toEmail = customer.BillingEmail ?? customer.Email;
+                    if (!string.IsNullOrWhiteSpace(toEmail))
+                    {
+                        try
+                        {
+                            var accessToken = AuthHelper.GetAccessToken(req);
+                            var result = await _emailService.SendInvoiceEmailAsync(toEmail, created, pdfBytes, accessToken, ccEmail: customer.CcEmail);
+                            emailSent = result.Success;
+                            emailError = result.Error;
+                        }
+                        catch (Exception emailEx)
+                        {
+                            emailError = emailEx.Message;
+                            _logger.LogError($"Quick invoice email error: {emailEx.Message}");
+                        }
+                    }
+                    else
+                    {
+                        emailError = "No email address on customer record";
+                    }
+                }
+
+                var response = req.CreateResponse(HttpStatusCode.Created);
+                await response.WriteAsJsonAsync(new
+                {
+                    invoice = created,
+                    emailSent,
+                    emailError,
+                    pdfUrl
+                });
+                return response;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"QuickInvoice error: {ex.Message}\n{ex.StackTrace}");
+                var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+                await errorResponse.WriteStringAsync($"Error: {ex.Message}");
+                return errorResponse;
+            }
+        }
+
         [Function("UpdateInvoice")]
         public async Task<HttpResponseData> UpdateInvoice(
             [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "invoices/{id}")] HttpRequestData req,

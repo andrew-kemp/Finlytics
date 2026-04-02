@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { getInvoices, createInvoice, updateInvoice, deleteInvoice, getCustomers, getCompanySettings, getNextInvoiceNumber, sendInvoiceReminder, getCreditNotesByCustomer, applyCreditNote } from '../services/apiService';
+import { getInvoices, createInvoice, updateInvoice, deleteInvoice, getCustomers, getCompanySettings, getNextInvoiceNumber, sendInvoiceReminder, getCreditNotesByCustomer, applyCreditNote, getLineItemDescriptions } from '../services/apiService';
 import Toast from './Toast';
 import { useToast } from '../hooks/useToast';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
+import AutocompleteInput from './AutocompleteInput';
 
 const API_BASE = 'https://financehub-func-kemponline.azurewebsites.net/api';
 
@@ -10,6 +11,7 @@ export default function Invoices() {
   const [invoices, setInvoices] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [companySettings, setCompanySettings] = useState(null);
+  const [descriptionSuggestions, setDescriptionSuggestions] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -43,6 +45,7 @@ export default function Invoices() {
     loadInvoices();
     loadCustomers();
     loadCompanySettings();
+    getLineItemDescriptions().then(setDescriptionSuggestions).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -713,10 +716,10 @@ export default function Invoices() {
                   {formData.lineItems.map((item, index) => (
                     <tr key={index}>
                       <td style={{ padding: '5px', border: '1px solid #ddd' }}>
-                        <input
-                          type="text"
+                        <AutocompleteInput
                           value={item.description}
-                          onChange={(e) => handleLineItemChange(index, 'description', e.target.value)}
+                          onChange={(val) => handleLineItemChange(index, 'description', val)}
+                          suggestions={descriptionSuggestions}
                           style={{ width: '100%', padding: '5px', border: '1px solid #ddd', borderRadius: '4px' }}
                         />
                       </td>

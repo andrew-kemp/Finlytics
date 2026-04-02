@@ -31,6 +31,8 @@ const CompanyLedger = () => {
         notes: ''
     });
     const [dlaEntries, setDlaEntries] = useState([]);
+    const [periodExpenses, setPeriodExpenses] = useState([]);
+    const [expenseSourceFilter, setExpenseSourceFilter] = useState('all'); // 'all' | 'company' | 'employee'
     const [repayData, setRepayData] = useState({
         dlaId: '',
         amount: '',
@@ -216,6 +218,8 @@ const CompanyLedger = () => {
                 const d = new Date(exp.entryDate);
                 return d >= periodStart && d <= periodEnd;
             });
+
+            setPeriodExpenses(periodExpenses);
 
             // Period DLA entries (OwedToDirector = director paid for company, CT-deductible)
             const periodDla = (Array.isArray(dlaEntriesData) ? dlaEntriesData : []).filter(e => {
@@ -1171,6 +1175,89 @@ const CompanyLedger = () => {
                         </tbody>
                     </table>
                 )}
+            </div>
+
+            {/* Expenses Table */}
+            <div className="entries-table card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                    <h3 style={{ margin: 0 }}>Expenses</h3>
+                    <div style={{ display: 'flex', gap: '4px', borderRadius: '0.3rem', overflow: 'hidden', border: '1px solid #0f2a4a' }}>
+                        {[{ key: 'all', label: 'All' }, { key: 'company', label: 'Company' }, { key: 'employee', label: 'Employee Claims' }].map(opt => (
+                            <button
+                                key={opt.key}
+                                onClick={() => setExpenseSourceFilter(opt.key)}
+                                style={{
+                                    padding: '0.2rem 0.6rem',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 600,
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    background: expenseSourceFilter === opt.key ? '#0f2a4a' : '#f8fafc',
+                                    color: expenseSourceFilter === opt.key ? '#fff' : '#0f2a4a'
+                                }}
+                            >{opt.label}</button>
+                        ))}
+                    </div>
+                </div>
+                {(() => {
+                    const filtered = periodExpenses
+                        .filter(e => !e.isDLA)
+                        .filter(e => {
+                            if (expenseSourceFilter === 'company') return !e.submittedByTeamMemberId;
+                            if (expenseSourceFilter === 'employee') return !!e.submittedByTeamMemberId;
+                            return true;
+                        });
+                    if (loading) return <p>Loading...</p>;
+                    if (filtered.length === 0) return <p className="no-data">No expenses for this period.</p>;
+                    return (
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Supplier</th>
+                                    <th>Category</th>
+                                    <th>Source</th>
+                                    <th>Net</th>
+                                    <th>VAT</th>
+                                    <th>Gross</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filtered.map(exp => (
+                                    <tr key={exp.id}>
+                                        <td>{formatDate(exp.entryDate)}</td>
+                                        <td>{exp.supplier}</td>
+                                        <td>{exp.category}</td>
+                                        <td>
+                                            <span style={{
+                                                display: 'inline-block',
+                                                padding: '0.15rem 0.5rem',
+                                                borderRadius: '999px',
+                                                fontSize: '0.72rem',
+                                                fontWeight: 600,
+                                                background: exp.submittedByTeamMemberId ? '#f3e8ff' : '#f1f5f9',
+                                                color: exp.submittedByTeamMemberId ? '#7c3aed' : '#64748b'
+                                            }}>
+                                                {exp.submittedByTeamMemberId ? 'Employee' : 'Company'}
+                                            </span>
+                                        </td>
+                                        <td className="amount">{formatCurrency(exp.amountNet)}</td>
+                                        <td className="amount">{formatCurrency(exp.vatAmount)}</td>
+                                        <td className="amount">{formatCurrency(exp.amountGross)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                            <tfoot>
+                                <tr style={{ fontWeight: 700, borderTop: '2px solid rgba(0,0,0,0.15)' }}>
+                                    <td colSpan="4">Total ({filtered.length})</td>
+                                    <td className="amount">{formatCurrency(filtered.reduce((s, e) => s + (e.amountNet || 0), 0))}</td>
+                                    <td className="amount">{formatCurrency(filtered.reduce((s, e) => s + (e.vatAmount || 0), 0))}</td>
+                                    <td className="amount">{formatCurrency(filtered.reduce((s, e) => s + (e.amountGross || 0), 0))}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    );
+                })()}
             </div>
         </div>
     );

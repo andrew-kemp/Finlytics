@@ -33,6 +33,10 @@ namespace FinanceHubFunctions.Models
         public int? CreditNoteId { get; set; }
         public string? CreditNoteNumber { get; set; }
         public decimal? CreditNoteDeduction { get; set; }
+        // GoCardless payment tracking
+        public string? GoCardlessPaymentId { get; set; }
+        public string? GoCardlessMandateId { get; set; }
+        public string? PaymentLink { get; set; }
     }
 
     public class InvoiceLine

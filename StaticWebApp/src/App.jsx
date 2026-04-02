@@ -32,14 +32,20 @@ const P11D          = lazy(() => import('./components/P11D'));
 const Dividends     = lazy(() => import('./components/Dividends'));
 const CreditNotes   = lazy(() => import('./components/CreditNotes'));
 const TeamManagement = lazy(() => import('./components/TeamManagement'));
+const RecurringInvoices = lazy(() => import('./components/RecurringInvoices'));
+const CategorizationRules = lazy(() => import('./components/CategorizationRules'));
+const GoCardlessPayments = lazy(() => import('./components/GoCardlessPayments'));
+const Bills = lazy(() => import('./components/Bills'));
 
 const API_BASE = 'https://financehub-func-kemponline.azurewebsites.net/api';
 
-// Background ping to wake the function host before the user clicks anything
-// Also pre-warms the MSAL token cache so the first API call is instant
+// Fire the health ping immediately on script load — don't wait for MSAL init.
+// This starts the cold-start process as early as possible.
+fetch(`${API_BASE}/health`, { method: 'GET' }).catch(() => {});
+
+// Pre-warm both the function host again and the MSAL token cache
 function warmupFunctionHost() {
     fetch(`${API_BASE}/health`, { method: 'GET' }).catch(() => {});
-    // Pre-acquire token silently so it's cached before first real API call
     import('./auth/authConfig').then(({ msalInstance, loginRequest }) => {
         const accounts = msalInstance.getAllAccounts();
         if (accounts.length > 0) {
@@ -261,8 +267,14 @@ function MainContent() {
                     <li onClick={() => handleNavigate('creditnotes')} className={view === 'creditnotes' ? 'active' : ''}>
                         🔴 Credit Notes
                     </li>
+                    <li onClick={() => handleNavigate('recurring-invoices')} className={view === 'recurring-invoices' ? 'active' : ''}>
+                        🔁 Recurring Invoices
+                    </li>
 
                     <li className="nav-group-label">Expenses &amp; Finance</li>
+                    <li onClick={() => handleNavigate('bills')} className={view === 'bills' ? 'active' : ''}>
+                        📋 Bills / AP
+                    </li>
                     <li onClick={() => handleNavigate('expenses')} className={view === 'expenses' ? 'active' : ''}>
                         💳 Expenses
                     </li>
@@ -272,8 +284,14 @@ function MainContent() {
                     <li onClick={() => handleNavigate('banking')} className={view === 'banking' ? 'active' : ''}>
                         🏦 Banking
                     </li>
+                    <li onClick={() => handleNavigate('gocardless')} className={view === 'gocardless' ? 'active' : ''}>
+                        💳 GoCardless
+                    </li>
                     <li onClick={() => handleNavigate('reconciliation')} className={view === 'reconciliation' ? 'active' : ''}>
                         ✅ Reconciliation
+                    </li>
+                    <li onClick={() => handleNavigate('categorization-rules')} className={view === 'categorization-rules' ? 'active' : ''}>
+                        🏷️ Auto-Categorise
                     </li>
                     <li onClick={() => handleNavigate('vatreturns')} className={view === 'vatreturns' ? 'active' : ''}>
                         📋 VAT Returns
@@ -412,10 +430,14 @@ function MainContent() {
                 {view === 'invoices' && <Invoices />}
                 {view === 'quotes' && <Quotes />}
                 {view === 'creditnotes' && <CreditNotes />}
+                {view === 'recurring-invoices' && <RecurringInvoices />}
+                {view === 'bills' && <Bills />}
                 {view === 'expenses' && <Expenses openNew={viewOptions.openNew} />}
                 {view === 'vatreturns' && <VatReturns />}
                 {view === 'banking' && <Banking />}
+                {view === 'gocardless' && <GoCardlessPayments />}
                 {view === 'reconciliation' && <Reconciliation />}
+                {view === 'categorization-rules' && <CategorizationRules />}
                 {view === 'dla' && <DLA openNew={viewOptions.openNew} />}
                 {view === 'mileage' && <MileageTrips openNew={viewOptions.openNew} />}
                 {view === 'companyledger' && <CompanyLedger />}

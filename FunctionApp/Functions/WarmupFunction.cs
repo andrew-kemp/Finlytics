@@ -24,5 +24,13 @@ namespace FinanceHubFunctions.Functions
             response.WriteString("{\"status\":\"ok\",\"timestamp\":\"" + DateTime.UtcNow.ToString("o") + "\"}");
             return response;
         }
+
+        // Keep the function app warm — runs every 4 minutes during business hours (Mon-Fri 7am-10pm UTC)
+        [Function("KeepAlive")]
+        public void KeepAlive(
+            [TimerTrigger("0 */4 * * * *")] TimerInfo timer)
+        {
+            _logger.LogInformation("Keep-alive ping at {time}", DateTime.UtcNow);
+        }
     }
 }

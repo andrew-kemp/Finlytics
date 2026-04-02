@@ -27,11 +27,15 @@ namespace FinanceHubFunctions.Services
             QuestPDF.Settings.License = LicenseType.Community;
 
             byte[] logoBytes = null;
-            if (!string.IsNullOrEmpty(company.LogoUrl))
+            // Prefer DocumentLogoUrl, then LogoUrl
+            var logoUrlToFetch = !string.IsNullOrWhiteSpace(company.DocumentLogoUrl)
+                ? company.DocumentLogoUrl
+                : company.LogoUrl;
+            if (!string.IsNullOrEmpty(logoUrlToFetch))
             {
                 try
                 {
-                    logoBytes = await _httpClient.GetByteArrayAsync(company.LogoUrl);
+                    logoBytes = await _httpClient.GetByteArrayAsync(logoUrlToFetch);
                 }
                 catch
                 {

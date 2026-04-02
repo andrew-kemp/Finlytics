@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -18,17 +19,20 @@ namespace FinanceHubFunctions.Functions
         private readonly ILogger<BankingFunctions> _logger;
         private readonly IBankAccountRepository? _bankAccountRepository;
         private readonly IBankTransactionRepository? _bankTransactionRepository;
+        private readonly ICategorizationRuleRepository? _categorizationRuleRepository;
         private readonly DeletionGuardService? _guard;
 
         public BankingFunctions(
             ILogger<BankingFunctions> logger,
             IBankAccountRepository? bankAccountRepository = null,
             IBankTransactionRepository? bankTransactionRepository = null,
+            ICategorizationRuleRepository? categorizationRuleRepository = null,
             DeletionGuardService? guard = null)
         {
             _logger = logger;
             _bankAccountRepository = bankAccountRepository;
             _bankTransactionRepository = bankTransactionRepository;
+            _categorizationRuleRepository = categorizationRuleRepository;
             _guard = guard;
         }
 
@@ -215,6 +219,26 @@ namespace FinanceHubFunctions.Functions
             {
                 transaction.CreatedDate = DateTime.UtcNow;
                 transaction.ModifiedDate = DateTime.UtcNow;
+            }
+
+            // Auto-categorise uncategorised transactions using categorization rules
+            if (_categorizationRuleRepository != null)
+            {
+                var catRules = (await _categorizationRuleRepository.GetActiveAsync()).ToList();
+                if (catRules.Count > 0)
+                {
+                    foreach (var tx in transactions)
+                    {
+                        if (string.IsNullOrEmpty(tx.Category))
+                        {
+                            var matched = CategorizationFunctions.ApplyRulesToTransaction(tx, catRules);
+                            if (matched != null)
+                            {
+                                tx.Category = matched;
+                            }
+                        }
+                    }
+                }
             }
 
             var created = await _bankTransactionRepository.CreateManyAsync(transactions);

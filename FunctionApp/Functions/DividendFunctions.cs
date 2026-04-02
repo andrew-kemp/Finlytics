@@ -482,7 +482,18 @@ namespace FinanceHubFunctions.Functions
                 string? logoMime = null;
                 if (_blobStorage != null && company != null)
                 {
-                    try { (logoBytes, logoMime) = await _blobStorage.GetLogoAsync(company.Id); }
+                    try
+                    {
+                        if (!string.IsNullOrWhiteSpace(company.DocumentLogoUrl))
+                        {
+                            var (b, m) = await _blobStorage.GetLogoBytesFromUrlAsync(company.DocumentLogoUrl);
+                            logoBytes = b; logoMime = m;
+                        }
+                        if (logoBytes == null)
+                        {
+                            (logoBytes, logoMime) = await _blobStorage.GetLogoAsync(company.Id);
+                        }
+                    }
                     catch { /* non-fatal */ }
                 }
 
@@ -532,7 +543,18 @@ namespace FinanceHubFunctions.Functions
                 string? logoMime = null;
                 if (_blobStorage != null && company != null)
                 {
-                    try { (logoBytes, logoMime) = await _blobStorage.GetLogoAsync(company.Id); }
+                    try
+                    {
+                        if (!string.IsNullOrWhiteSpace(company.DocumentLogoUrl))
+                        {
+                            var (b, m) = await _blobStorage.GetLogoBytesFromUrlAsync(company.DocumentLogoUrl);
+                            logoBytes = b; logoMime = m;
+                        }
+                        if (logoBytes == null)
+                        {
+                            (logoBytes, logoMime) = await _blobStorage.GetLogoAsync(company.Id);
+                        }
+                    }
                     catch { /* non-fatal */ }
                 }
 
@@ -611,7 +633,18 @@ namespace FinanceHubFunctions.Functions
                 byte[]? logoBytes = null;
                 if (_blobStorage != null && company != null)
                 {
-                    try { (logoBytes, _) = await _blobStorage.GetLogoAsync(company.Id); }
+                    try
+                    {
+                        if (!string.IsNullOrWhiteSpace(company.DocumentLogoUrl))
+                        {
+                            var (b, _) = await _blobStorage.GetLogoBytesFromUrlAsync(company.DocumentLogoUrl);
+                            logoBytes = b;
+                        }
+                        if (logoBytes == null)
+                        {
+                            (logoBytes, _) = await _blobStorage.GetLogoAsync(company.Id);
+                        }
+                    }
                     catch { /* non-fatal */ }
                 }
                 var pdfBytes = GenerateDividendVoucherPdf(declaration, alloc, company, logoBytes);

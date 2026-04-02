@@ -64,6 +64,24 @@ namespace FinanceHubFunctions.Services
                 return (null, null, null, null);
             }
 
+            // Prefer EmailLogoUrl if set, then fall back to LogoUrl, then blob search
+            var emailLogoUrl = companySettings.EmailLogoUrl;
+            if (!string.IsNullOrWhiteSpace(emailLogoUrl))
+            {
+                try
+                {
+                    var (bytes, contentType) = await _blobStorageService.GetLogoBytesFromUrlAsync(emailLogoUrl);
+                    if (bytes != null && bytes.Length > 0)
+                    {
+                        return (bytes, contentType, "company-logo", "cid:company-logo");
+                    }
+                }
+                catch
+                {
+                    // Fall through to blob search
+                }
+            }
+
             try
             {
                 var (bytes, contentType) = await _blobStorageService.GetLogoAsync(companySettings.Id);
@@ -546,7 +564,8 @@ namespace FinanceHubFunctions.Services
                 ["QUOTE_DATE"] = quote.DateIssued.ToString("dd MMM yyyy"),
                 ["QUOTE_TOTAL"] = quote.AmountGross.ToString("N2"),
                 ["CURRENCY_SYMBOL"] = currencySymbol,
-                ["VALID_UNTIL"] = quote.ValidUntil?.ToString("dd MMM yyyy") ?? ""
+                ["VALID_UNTIL"] = quote.ValidUntil?.ToString("dd MMM yyyy") ?? "",
+                ["PO_REFERENCE"] = "" // Quotes don't have PO references — pass empty to remove conditional block
             };
 
             var (logoBytes, logoContentType, logoContentId, logoSrcOverride) = await TryGetInlineLogoAsync(companySettings);

@@ -82,13 +82,15 @@ namespace FinanceHubFunctions.Functions
             _logger.LogInformation("Getting trivial benefit summary");
             try
             {
-                var taxYear = req.Url.Query
+                var queryParams = req.Url.Query
                     .TrimStart('?')
                     .Split('&')
                     .Select(p => p.Split('='))
-                    .Where(p => p.Length == 2 && p[0].Equals("taxYear", StringComparison.OrdinalIgnoreCase))
-                    .Select(p => Uri.UnescapeDataString(p[1]))
-                    .FirstOrDefault() ?? string.Empty;
+                    .Where(p => p.Length == 2)
+                    .ToDictionary(p => p[0], p => Uri.UnescapeDataString(p[1]), StringComparer.OrdinalIgnoreCase);
+
+                var taxYear = queryParams.GetValueOrDefault("taxYear") ?? string.Empty;
+                var recipientFilter = queryParams.GetValueOrDefault("recipient") ?? string.Empty;
 
                 var allDla = await _dlaRepository.GetAllAsync();
                 var allExp = await _expenseRepository.GetAllAsync();
@@ -103,9 +105,9 @@ namespace FinanceHubFunctions.Functions
                         date = d.EntryDate,
                         taxYear = d.TaxYear,
                         benefitType = d.TrivialBenefitType,
-                        director = d.Director
+                        recipient = d.TrivialBenefitRecipient ?? d.Director
                     })
-                    .ToList<object>();
+                    .ToList();
 
                 var expEntries = allExp
                     .Where(e => e.IsTrivialBenefit && (string.IsNullOrEmpty(taxYear) || e.TaxYear == taxYear))
@@ -114,23 +116,44 @@ namespace FinanceHubFunctions.Functions
                         source = "Expense",
                         description = e.Supplier,
                         amount = e.AmountGross,
-                        date = e.DatePaid ?? e.EntryDate,
+                        date = (DateTime?)(e.DatePaid ?? e.EntryDate),
                         taxYear = e.TaxYear,
                         benefitType = e.TrivialBenefitType,
-                        director = (string?)null
+                        recipient = e.TrivialBenefitRecipient ?? (string?)null
                     })
-                    .ToList<object>();
+                    .ToList();
 
-                var allEntries = dlaEntries.Concat(expEntries).ToList();
-                var count = allEntries.Count;
+                var allEntries = dlaEntries.Select(d => (object)d).Concat(expEntries.Select(e => (object)e)).ToList();
+
+                // Build per-recipient counts
                 const int limit = 6;
+                var byRecipient = dlaEntries.Select(d => new { d.recipient, entry = (object)d })
+                    .Concat(expEntries.Where(e => e.recipient != null).Select(e => new { e.recipient, entry = (object)e }))
+                    .GroupBy(x => x.recipient, StringComparer.OrdinalIgnoreCase)
+                    .Select(g => new {
+                        recipient = g.Key,
+                        count = g.Count(),
+                        limit,
+                        remaining = Math.Max(0, limit - g.Count()),
+                        isAtLimit = g.Count() >= limit
+                    })
+                    .OrderBy(r => r.recipient)
+                    .ToList();
+
+                // If filtering by recipient, get that recipient's count
+                var filteredCount = string.IsNullOrEmpty(recipientFilter)
+                    ? allEntries.Count
+                    : byRecipient.FirstOrDefault(r => string.Equals(r.recipient, recipientFilter, StringComparison.OrdinalIgnoreCase))?.count ?? 0;
+                var filteredRemaining = Math.Max(0, limit - filteredCount);
 
                 var summary = new {
                     taxYear,
-                    count,
+                    recipient = recipientFilter,
+                    count = filteredCount,
                     limit,
-                    remaining = Math.Max(0, limit - count),
-                    isAtLimit = count >= limit,
+                    remaining = filteredRemaining,
+                    isAtLimit = filteredCount >= limit,
+                    byRecipient,
                     entries = allEntries
                 };
 
@@ -173,16 +196,23 @@ namespace FinanceHubFunctions.Functions
                         return tb400;
                     }
 
+                    // Default recipient to the director name if not explicitly set
+                    if (string.IsNullOrWhiteSpace(dlaEntry.TrivialBenefitRecipient))
+                        dlaEntry.TrivialBenefitRecipient = dlaEntry.Director;
+
                     var taxYearKey = dlaEntry.TaxYear;
+                    var recipient = dlaEntry.TrivialBenefitRecipient;
                     var allDla = await _dlaRepository.GetAllAsync();
                     var allExp = await _expenseRepository.GetAllAsync();
-                    var dlaCount = allDla.Count(d => d.IsTrivialBenefit && d.TaxYear == taxYearKey);
-                    var expCount = allExp.Count(e => e.IsTrivialBenefit && e.TaxYear == taxYearKey);
+                    var dlaCount = allDla.Count(d => d.IsTrivialBenefit && d.TaxYear == taxYearKey
+                        && string.Equals(d.TrivialBenefitRecipient ?? d.Director, recipient, StringComparison.OrdinalIgnoreCase));
+                    var expCount = allExp.Count(e => e.IsTrivialBenefit && e.TaxYear == taxYearKey
+                        && string.Equals(e.TrivialBenefitRecipient, recipient, StringComparison.OrdinalIgnoreCase));
                     var totalCount = dlaCount + expCount;
                     if (totalCount >= 6)
                     {
                         var tb400 = req.CreateResponse(HttpStatusCode.BadRequest);
-                        await tb400.WriteStringAsync($"Trivial benefit limit reached: 6 of 6 already recorded in tax year {taxYearKey}. HMRC allows a maximum of 6 trivial benefits per director per tax year.");
+                        await tb400.WriteStringAsync($"Trivial benefit limit reached: {recipient} already has 6 of 6 recorded in tax year {taxYearKey}. HMRC allows a maximum of 6 trivial benefits per employee/director per tax year.");
                         return tb400;
                     }
 

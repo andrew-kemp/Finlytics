@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { getBankAccounts, createBankAccount, updateBankAccount, deleteBankAccount, getBankTransactionsByAccount, createBankTransaction, getMonzoStatus, getMonzoAuthUrl, syncMonzoTransactions } from '../services/apiService';
+import { getBankAccounts, createBankAccount, updateBankAccount, deleteBankAccount, getBankTransactionsByAccount, createBankTransaction, getTrueLayerStatus, getTrueLayerAuthUrl, syncTrueLayerTransactions, disconnectTrueLayer, getGoCardlessInstitutions, connectBankGoCardless, syncGoCardlessTransactions, getGoCardlessBankStatus } from '../services/apiService';
 
 const defaultAccount = {
     accountName: '',
-    bankName: 'Monzo',
+    bankName: '',
     sortCode: '',
     accountNumber: '',
     currency: 'GBP',
@@ -32,28 +32,71 @@ export default function Banking() {
     const [editingAccount, setEditingAccount] = useState(null);
     const [accountForm, setAccountForm] = useState(defaultAccount);
     const [transactionForm, setTransactionForm] = useState(defaultTransaction);
-    const [monzoStatus, setMonzoStatus] = useState(null);
-    const [syncing, setSyncing] = useState(false);
     const [syncResult, setSyncResult] = useState(null);
+    const [trueLayerStatus, setTrueLayerStatus] = useState(null);
+    const [tlSyncing, setTlSyncing] = useState(false);
+    const [gcInstitutions, setGcInstitutions] = useState([]);
+    const [gcConnecting, setGcConnecting] = useState(false);
+    const [gcSyncing, setGcSyncing] = useState(false);
+    const [showGcPicker, setShowGcPicker] = useState(false);
+    const [gcPickerAccountId, setGcPickerAccountId] = useState(null);
 
     useEffect(() => {
         loadAccounts();
-        getMonzoStatus().then(setMonzoStatus).catch(() => setMonzoStatus({ connected: false }));
+        getTrueLayerStatus().then(setTrueLayerStatus).catch(() => setTrueLayerStatus({ connected: false }));
 
-        // Handle redirect back from Monzo OAuth
+        // Handle redirect back from TrueLayer OAuth
         const params = new URLSearchParams(window.location.search);
-        console.log('Banking mount — URL params:', window.location.search);
-        if (params.get('monzo_connected') === 'true') {
-            console.log('Monzo OAuth success!');
-            setSyncResult({ success: true, message: 'Monzo connected successfully!' });
+        if (params.get('truelayer_connected') === 'true') {
+            setSyncResult({ success: true, message: 'Bank connected via TrueLayer!' });
             window.history.replaceState({}, '', window.location.pathname);
-            setTimeout(() => getMonzoStatus().then(setMonzoStatus).catch(() => {}), 1500);
-        } else if (params.get('monzo_error')) {
-            const errMsg = decodeURIComponent(params.get('monzo_error'));
-            console.error('Monzo OAuth error:', errMsg);
-            setSyncResult({ success: false, message: `Monzo connection failed: ${errMsg}` });
+            localStorage.removeItem('truelayer_auth_pending');
+            setTimeout(() => { getTrueLayerStatus().then(setTrueLayerStatus).catch(() => {}); loadAccounts(); }, 1500);
+        } else if (params.get('truelayer_error')) {
+            const errMsg = decodeURIComponent(params.get('truelayer_error'));
+            setSyncResult({ success: false, message: `TrueLayer connection failed: ${errMsg}` });
             window.history.replaceState({}, '', window.location.pathname);
+            localStorage.removeItem('truelayer_auth_pending');
         }
+
+        // Handle redirect back from GoCardless Bank Data OAuth
+        if (params.get('gc_connected') === 'true') {
+            setSyncResult({ success: true, message: 'Bank connected via GoCardless!' });
+            window.history.replaceState({}, '', window.location.pathname);
+            localStorage.removeItem('gc_auth_pending');
+            setTimeout(() => { loadAccounts(); }, 1500);
+        } else if (params.get('gc_error')) {
+            const errMsg = decodeURIComponent(params.get('gc_error'));
+            setSyncResult({ success: false, message: `GoCardless connection failed: ${errMsg}` });
+            window.history.replaceState({}, '', window.location.pathname);
+            localStorage.removeItem('gc_auth_pending');
+        }
+
+        // PWA: when user switches back from browser after completing TrueLayer auth,
+        // detect connection via visibilitychange / focus events
+        const checkPendingAuth = async () => {
+            if (!localStorage.getItem('truelayer_auth_pending')) return;
+            try {
+                const status = await getTrueLayerStatus();
+                if (status?.connected) {
+                    localStorage.removeItem('truelayer_auth_pending');
+                    setTrueLayerStatus(status);
+                    setSyncResult({ success: true, message: 'Bank connected via TrueLayer!' });
+                    await loadAccounts();
+                }
+            } catch { /* ignore */ }
+        };
+        const onResume = () => { if (document.visibilityState === 'visible') checkPendingAuth(); };
+        document.addEventListener('visibilitychange', onResume);
+        window.addEventListener('focus', checkPendingAuth);
+
+        // Also check immediately in case PWA was reopened from scratch
+        checkPendingAuth();
+
+        return () => {
+            document.removeEventListener('visibilitychange', onResume);
+            window.removeEventListener('focus', checkPendingAuth);
+        };
     }, []);
 
     async function loadAccounts() {
@@ -95,7 +138,7 @@ export default function Banking() {
         setEditingAccount(account);
         setAccountForm({
             accountName: account.accountName || '',
-            bankName: account.bankName || 'Monzo',
+            bankName: account.bankName || '',
             sortCode: account.sortCode || '',
             accountNumber: account.accountNumber || '',
             currency: account.currency || 'GBP',
@@ -174,32 +217,86 @@ export default function Banking() {
         }
     };
 
-    const handleMonzoConnect = async () => {
+    const handleTrueLayerConnect = async () => {
         try {
-            console.log('Monzo connect: fetching auth URL...');
-            const data = await getMonzoAuthUrl();
-            console.log('Monzo connect: got auth URL', data.authUrl);
+            const data = await getTrueLayerAuthUrl();
+            // Set flag so when user returns (especially in PWA) we auto-check status
+            localStorage.setItem('truelayer_auth_pending', Date.now().toString());
             window.location.href = data.authUrl;
         } catch (err) {
-            console.error('Monzo connect error:', err);
-            setSyncResult({ success: false, message: 'Could not start Monzo connection: ' + err.message });
+            setSyncResult({ success: false, message: 'Could not start TrueLayer connection: ' + err.message });
         }
     };
 
-    const handleMonzoSync = async () => {
-        setSyncing(true);
+    const handleTrueLayerSync = async () => {
+        setTlSyncing(true);
         setSyncResult(null);
         try {
-            const result = await syncMonzoTransactions();
+            const result = await syncTrueLayerTransactions();
             setSyncResult({ success: true, message: result.message, imported: result.imported });
-            // Refresh status and transactions
-            getMonzoStatus().then(setMonzoStatus).catch(() => {});
+            getTrueLayerStatus().then(setTrueLayerStatus).catch(() => {});
             await loadAccounts();
             if (selectedAccount) await loadTransactions(selectedAccount.id);
         } catch (err) {
             setSyncResult({ success: false, message: err.message });
         } finally {
-            setSyncing(false);
+            setTlSyncing(false);
+        }
+    };
+
+    const handleTrueLayerDisconnect = async () => {
+        if (!confirm('Disconnect TrueLayer? Existing imported transactions will remain.')) return;
+        try {
+            await disconnectTrueLayer();
+            setTrueLayerStatus({ connected: false });
+            setSyncResult({ success: true, message: 'TrueLayer disconnected' });
+            await loadAccounts();
+        } catch (err) {
+            setSyncResult({ success: false, message: err.message });
+        }
+    };
+
+    // ── GoCardless Bank Data ──
+    const handleGcConnectBank = async (bankAccountId) => {
+        setGcPickerAccountId(bankAccountId);
+        setShowGcPicker(true);
+        if (gcInstitutions.length === 0) {
+            try {
+                const data = await getGoCardlessInstitutions();
+                setGcInstitutions(data);
+            } catch (err) {
+                setSyncResult({ success: false, message: 'Could not load banks: ' + err.message });
+                setShowGcPicker(false);
+            }
+        }
+    };
+
+    const handleGcSelectInstitution = async (institutionId) => {
+        setGcConnecting(true);
+        try {
+            const data = await connectBankGoCardless(institutionId, gcPickerAccountId);
+            localStorage.setItem('gc_auth_pending', Date.now().toString());
+            window.location.href = data.authUrl;
+        } catch (err) {
+            setSyncResult({ success: false, message: 'GoCardless connection failed: ' + err.message });
+        } finally {
+            setGcConnecting(false);
+            setShowGcPicker(false);
+        }
+    };
+
+    const handleGcSync = async (bankAccountId) => {
+        setGcSyncing(true);
+        setSyncResult(null);
+        try {
+            const result = await syncGoCardlessTransactions(bankAccountId);
+            setSyncResult({ success: true, message: result.message || `Synced ${result.imported || 0} transactions via GoCardless` });
+            await loadAccounts();
+            if (selectedAccount) await loadTransactions(selectedAccount.id);
+        } catch (err) {
+            setSyncResult({ success: false, message: err.message });
+        } finally {
+            setGcSyncing(false);
         }
     };
 
@@ -212,90 +309,124 @@ export default function Banking() {
                 </button>
             </div>
 
-            {/* ── Monzo Integration Panel ── */}
-            {monzoStatus && (
+            {/* ── Open Banking Panel ── */}
+            {trueLayerStatus && (
                 <div style={{
-                    background: monzoStatus.connected ? '#f0fdf4' : '#fafafa',
-                    border: `1px solid ${monzoStatus.connected ? '#bbf7d0' : '#e5e7eb'}`,
+                    background: trueLayerStatus.connected ? '#eff6ff' : '#fafafa',
+                    border: `1px solid ${trueLayerStatus.connected ? '#bfdbfe' : '#e5e7eb'}`,
                     borderRadius: 10, padding: '1rem 1.25rem', marginBottom: '1.25rem',
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem'
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <span style={{ fontSize: '1.5rem' }}>🏦</span>
+                        <span style={{ fontSize: '1.5rem' }}>🏛️</span>
                         <div>
-                            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: monzoStatus.connected ? '#15803d' : '#374151' }}>
-                                {monzoStatus.connected ? '✓ Monzo Connected — ANDY KEMP CONSULTING LTD' : 'Monzo Not Connected'}
+                            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: trueLayerStatus.connected ? '#1d4ed8' : '#374151' }}>
+                                {trueLayerStatus.connected
+                                    ? `✓ Open Banking Connected${trueLayerStatus.provider ? ` — ${trueLayerStatus.provider}` : ''} (${trueLayerStatus.accountCount} account${trueLayerStatus.accountCount !== 1 ? 's' : ''})`
+                                    : 'Open Banking (TrueLayer)'}
                             </div>
-                            {monzoStatus.connected && (
+                            {trueLayerStatus.connected && (
                                 <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: 2 }}>
-                                    Balance: <strong>£{parseFloat(monzoStatus.balance || 0).toFixed(2)}</strong>
-                                    {monzoStatus.totalBalance !== monzoStatus.balance && (
-                                        <span style={{ marginLeft: 8 }}>· Total (inc pots): <strong>£{parseFloat(monzoStatus.totalBalance || 0).toFixed(2)}</strong></span>
+                                    {trueLayerStatus.balance != null && (
+                                        <span>Balance: <strong>£{parseFloat(trueLayerStatus.balance).toFixed(2)}</strong></span>
                                     )}
-                                    {monzoStatus.lastSyncedAt && (
-                                        <span style={{ marginLeft: 8 }}>· Last sync: {new Date(monzoStatus.lastSyncedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                                    {trueLayerStatus.lastSyncedAt && (
+                                        <span style={{ marginLeft: 8 }}>· Last sync: {new Date(trueLayerStatus.lastSyncedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                                     )}
-                                    {monzoStatus.tokenExpired && (
-                                        <span style={{ marginLeft: 8, color: '#dc2626', fontWeight: 600 }}>⚠ Token expired — re-authenticate at developers.monzo.com</span>
+                                    {trueLayerStatus.tokenExpired && (
+                                        <span style={{ marginLeft: 8, color: '#dc2626', fontWeight: 600 }}>⚠ Token expired — reconnect below</span>
                                     )}
+                                </div>
+                            )}
+                            {!trueLayerStatus.connected && (
+                                <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: 2 }}>
+                                    Connect any UK bank account securely via Open Banking
                                 </div>
                             )}
                         </div>
                     </div>
-                    {!monzoStatus.connected && (
+                    {!trueLayerStatus.connected && (
                         <button
-                            onClick={handleMonzoConnect}
+                            onClick={handleTrueLayerConnect}
                             style={{
-                                background: '#ef4444', color: '#fff', border: 'none',
+                                background: '#2563eb', color: '#fff', border: 'none',
                                 borderRadius: 6, padding: '0.5rem 1.1rem',
                                 fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer'
                             }}
                         >
-                            🔗 Connect Monzo
+                            🔗 Connect Bank
                         </button>
                     )}
-                    {monzoStatus.connected && !monzoStatus.tokenExpired && (
+                    {trueLayerStatus.connected && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            {syncResult && (
-                                <span style={{ fontSize: '0.82rem', color: syncResult.success ? '#15803d' : '#dc2626', fontWeight: 500 }}>
-                                    {syncResult.success ? `✓ ${syncResult.message}` : `✗ ${syncResult.message}`}
-                                </span>
-                            )}
                             <button
-                                onClick={handleMonzoSync}
-                                disabled={syncing}
+                                onClick={handleTrueLayerSync}
+                                disabled={tlSyncing}
                                 style={{
-                                    background: syncing ? '#d1fae5' : '#16a34a', color: '#fff',
+                                    background: tlSyncing ? '#bfdbfe' : '#2563eb', color: '#fff',
                                     border: 'none', borderRadius: 6, padding: '0.45rem 1rem',
-                                    fontWeight: 600, fontSize: '0.875rem', cursor: syncing ? 'not-allowed' : 'pointer',
+                                    fontWeight: 600, fontSize: '0.875rem', cursor: tlSyncing ? 'not-allowed' : 'pointer',
                                     display: 'flex', alignItems: 'center', gap: '0.4rem'
                                 }}
                             >
-                                {syncing ? '⏳ Syncing…' : '🔄 Sync Monzo'}
+                                {tlSyncing ? '⏳ Syncing…' : '🔄 Sync Transactions'}
                             </button>
                             <button
-                                onClick={handleMonzoConnect}
+                                onClick={handleTrueLayerConnect}
                                 style={{
                                     background: 'transparent', color: '#6b7280', border: '1px solid #d1d5db',
                                     borderRadius: 6, padding: '0.45rem 0.85rem',
                                     fontWeight: 500, fontSize: '0.8rem', cursor: 'pointer'
                                 }}
                             >
-                                🔗 Reconnect
+                                + Add Bank
+                            </button>
+                            <button
+                                onClick={handleTrueLayerDisconnect}
+                                style={{
+                                    background: 'transparent', color: '#dc2626', border: '1px solid #fca5a5',
+                                    borderRadius: 6, padding: '0.45rem 0.85rem',
+                                    fontWeight: 500, fontSize: '0.8rem', cursor: 'pointer'
+                                }}
+                            >
+                                Disconnect
                             </button>
                         </div>
                     )}
-                    {monzoStatus.connected && monzoStatus.tokenExpired && (
-                        <button
-                            onClick={handleMonzoConnect}
-                            style={{
-                                background: '#ef4444', color: '#fff', border: 'none',
-                                borderRadius: 6, padding: '0.5rem 1.1rem',
-                                fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer'
-                            }}
-                        >
-                            🔗 Re-connect Monzo
-                        </button>
+                </div>
+            )}
+
+            {/* ── GoCardless Bank Institution Picker ── */}
+            {showGcPicker && (
+                <div style={{
+                    background: '#f9fafb', border: '1px solid #e5e7eb',
+                    borderRadius: 10, padding: '1rem 1.25rem', marginBottom: '1.25rem'
+                }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                        <h4 style={{ margin: 0, fontSize: '0.95rem' }}>Select your Bank (GoCardless)</h4>
+                        <button onClick={() => setShowGcPicker(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', color: '#6b7280' }}>✕</button>
+                    </div>
+                    {gcInstitutions.length === 0 ? (
+                        <div style={{ color: '#6b7280', fontSize: '0.875rem' }}>Loading banks...</div>
+                    ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.5rem', maxHeight: 300, overflowY: 'auto' }}>
+                            {gcInstitutions.map(inst => (
+                                <button
+                                    key={inst.id}
+                                    onClick={() => handleGcSelectInstitution(inst.id)}
+                                    disabled={gcConnecting}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                        padding: '0.5rem 0.75rem', border: '1px solid #d1d5db',
+                                        borderRadius: 8, background: '#fff', cursor: gcConnecting ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.8rem', fontWeight: 500, textAlign: 'left'
+                                    }}
+                                >
+                                    {inst.logo && <img src={inst.logo} alt="" style={{ width: 24, height: 24, borderRadius: 4 }} />}
+                                    {inst.name}
+                                </button>
+                            ))}
+                        </div>
                     )}
                 </div>
             )}
@@ -383,8 +514,28 @@ export default function Banking() {
                                     <td>{account.currency}</td>
                                     <td>{account.isActive ? 'Yes' : 'No'}</td>
                                     <td>
-                                        <button className="btn-secondary" onClick={() => handleEditAccount(account)}>Edit</button>
-                                        <button className="btn-danger" onClick={() => handleDeleteAccount(account)}>Delete</button>
+                                        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                                            <button className="btn-secondary" onClick={() => handleEditAccount(account)}>Edit</button>
+                                            <button className="btn-danger" onClick={() => handleDeleteAccount(account)}>Delete</button>
+                                            {account.goCardlessConnected ? (
+                                                <button
+                                                    className="btn-secondary"
+                                                    disabled={gcSyncing}
+                                                    onClick={() => handleGcSync(account.id)}
+                                                    style={{ fontSize: '0.75rem' }}
+                                                >
+                                                    {gcSyncing ? '⏳' : '🔄'} GC Sync
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    className="btn-secondary"
+                                                    onClick={() => handleGcConnectBank(account.id)}
+                                                    style={{ fontSize: '0.75rem' }}
+                                                >
+                                                    🔗 Connect GC
+                                                </button>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
