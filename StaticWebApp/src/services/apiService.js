@@ -2068,9 +2068,12 @@ export async function getMileageSummary({ taxYear, director } = {}) {
     return response.json();
 }
 
-export async function getMileageClaims({ director } = {}) {
+export async function getMileageClaims({ director, taxYear } = {}) {
     const headers = await getAuthHeaders();
-    const qs = director ? `?director=${encodeURIComponent(director)}` : '';
+    const params = new URLSearchParams();
+    if (director) params.set('director', director);
+    if (taxYear)  params.set('taxYear',  taxYear);
+    const qs = params.toString() ? `?${params}` : '';
     const response = await fetch(`${API_BASE}/mileage/claims${qs}`, { headers });
     if (!response.ok) throw new Error('Failed to load mileage claims');
     return response.json();

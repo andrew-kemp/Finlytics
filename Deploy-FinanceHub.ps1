@@ -12,18 +12,57 @@ Write-Host "  FinanceHub - Deploy All Components" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
+# Load deployment config for expected tenant/subscription
+$configPath = Join-Path $scriptRoot "deployment-config-kemponline.json"
+if (Test-Path $configPath) {
+    $deployConfig = Get-Content $configPath -Raw | ConvertFrom-Json
+    $expectedTenantId = $deployConfig.TenantId
+    $expectedSubscriptionId = $deployConfig.SubscriptionId
+} else {
+    Write-Host "  ⚠ No deployment-config-kemponline.json found, skipping tenant/subscription validation" -ForegroundColor Yellow
+    $expectedTenantId = $null
+    $expectedSubscriptionId = $null
+}
+
 # Check if user is logged into Azure
 Write-Host "Checking Azure login status..." -ForegroundColor Yellow
-try {
-    $account = az account show 2>$null | ConvertFrom-Json
-    Write-Host "  ✓ Logged in as: $($account.user.name)" -ForegroundColor Green
-    Write-Host "  ✓ Subscription: $($account.name)" -ForegroundColor Green
-} catch {
+$account = az account show 2>$null | ConvertFrom-Json
+if (-not $account) {
     Write-Host "  ✗ Not logged into Azure" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Please run: az login" -ForegroundColor Yellow
-    exit 1
+    if ($expectedTenantId) {
+        Write-Host "  Logging in to tenant $expectedTenantId..." -ForegroundColor Yellow
+        az login --tenant $expectedTenantId
+        $account = az account show | ConvertFrom-Json
+    } else {
+        Write-Host "  Please run: az login" -ForegroundColor Yellow
+        exit 1
+    }
 }
+
+# Verify tenant
+if ($expectedTenantId -and $account.tenantId -ne $expectedTenantId) {
+    Write-Host "  ⚠ Wrong tenant: $($account.tenantId)" -ForegroundColor Yellow
+    Write-Host "  Expected tenant: $expectedTenantId" -ForegroundColor Yellow
+    Write-Host "  Switching to correct tenant..." -ForegroundColor Yellow
+    az login --tenant $expectedTenantId
+    $account = az account show | ConvertFrom-Json
+    if ($account.tenantId -ne $expectedTenantId) {
+        Write-Host "  ✗ Failed to switch to correct tenant" -ForegroundColor Red
+        exit 1
+    }
+}
+
+# Verify subscription
+if ($expectedSubscriptionId -and $account.id -ne $expectedSubscriptionId) {
+    Write-Host "  ⚠ Wrong subscription: $($account.name) ($($account.id))" -ForegroundColor Yellow
+    Write-Host "  Switching to subscription $expectedSubscriptionId..." -ForegroundColor Yellow
+    az account set --subscription $expectedSubscriptionId
+    $account = az account show | ConvertFrom-Json
+}
+
+Write-Host "  ✓ Logged in as: $($account.user.name)" -ForegroundColor Green
+Write-Host "  ✓ Tenant: $($account.tenantId)" -ForegroundColor Green
+Write-Host "  ✓ Subscription: $($account.name) ($($account.id))" -ForegroundColor Green
 Write-Host ""
 
 # ===========================

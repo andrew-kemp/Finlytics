@@ -1462,6 +1462,24 @@ namespace FinanceHubFunctions.Data
                 .ToListAsync();
         }
 
+        public async Task<IEnumerable<MileageClaim>> GetByTaxYearAsync(string taxYear)
+        {
+            return await _context.MileageClaims
+                .AsNoTracking()
+                .Where(c => c.TaxYear == taxYear)
+                .OrderByDescending(c => c.PeriodEnd)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<MileageClaim>> GetByDirectorAndTaxYearAsync(string director, string taxYear)
+        {
+            return await _context.MileageClaims
+                .AsNoTracking()
+                .Where(c => c.Director == director && c.TaxYear == taxYear)
+                .OrderByDescending(c => c.PeriodEnd)
+                .ToListAsync();
+        }
+
         public async Task<MileageClaim?> GetByIdAsync(int id)
         {
             return await _context.MileageClaims.FindAsync(id);

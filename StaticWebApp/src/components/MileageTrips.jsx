@@ -108,7 +108,7 @@ const MileageTrips = ({ openNew }) => {
         try {
             const [tripsData, claimsData, summaryData, settingsData] = await Promise.all([
                 getMileageTrips({ taxYear, director: filterDirector || undefined }),
-                getMileageClaims({ director: filterDirector || undefined }),
+                getMileageClaims({ taxYear, director: filterDirector || undefined }),
                 getMileageSummary({ taxYear, director: filterDirector || undefined }),
                 getCompanySettings()
             ]);

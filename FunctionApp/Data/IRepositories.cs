@@ -246,6 +246,8 @@ namespace FinanceHubFunctions.Data
     {
         Task<IEnumerable<MileageClaim>> GetAllAsync();
         Task<IEnumerable<MileageClaim>> GetByDirectorAsync(string director);
+        Task<IEnumerable<MileageClaim>> GetByTaxYearAsync(string taxYear);
+        Task<IEnumerable<MileageClaim>> GetByDirectorAndTaxYearAsync(string director, string taxYear);
         Task<MileageClaim?> GetByIdAsync(int id);
         Task<MileageClaim> CreateAsync(MileageClaim claim);
         Task<MileageClaim> UpdateAsync(MileageClaim claim);

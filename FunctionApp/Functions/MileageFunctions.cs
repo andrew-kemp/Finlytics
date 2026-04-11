@@ -364,10 +364,17 @@ namespace FinanceHubFunctions.Functions
             {
                 var qs       = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
                 var director = qs["director"];
+                var taxYear  = qs["taxYear"];
 
-                IEnumerable<MileageClaim> claims = string.IsNullOrEmpty(director)
-                    ? await _claimRepository.GetAllAsync()
-                    : await _claimRepository.GetByDirectorAsync(director);
+                IEnumerable<MileageClaim> claims;
+                if (!string.IsNullOrEmpty(director) && !string.IsNullOrEmpty(taxYear))
+                    claims = await _claimRepository.GetByDirectorAndTaxYearAsync(director, taxYear);
+                else if (!string.IsNullOrEmpty(taxYear))
+                    claims = await _claimRepository.GetByTaxYearAsync(taxYear);
+                else if (!string.IsNullOrEmpty(director))
+                    claims = await _claimRepository.GetByDirectorAsync(director);
+                else
+                    claims = await _claimRepository.GetAllAsync();
 
                 var resp = req.CreateResponse(HttpStatusCode.OK);
                 await resp.WriteAsJsonAsync(claims);
