@@ -1187,9 +1187,12 @@ namespace FinanceHubFunctions.Functions
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error recording batch DLA payments");
+                var innerMsg = ex.InnerException?.InnerException?.Message 
+                    ?? ex.InnerException?.Message 
+                    ?? ex.Message;
+                _logger.LogError(ex, "Error recording batch DLA payments. Inner: {InnerError}", innerMsg);
                 var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
-                await errorResponse.WriteStringAsync($"Error: {ex.Message}");
+                await errorResponse.WriteStringAsync($"Error: {innerMsg}");
                 return errorResponse;
             }
         }
