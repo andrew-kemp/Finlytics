@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.EntityFrameworkCore;
 using FinanceHubFunctions.Services;
 using FinanceHubFunctions.Models;
 using FinanceHubFunctions.Data;
@@ -1026,85 +1028,90 @@ namespace FinanceHubFunctions.Functions
                 _logger.LogInformation($"Batch payment validation: {validEntries.Count} valid, {errors.Count} errors out of {request.DlaIds.Count} requested");
 
                 // Process all valid entries inside a single transaction — all or nothing
-                using var transaction = await _dbContext.Database.BeginTransactionAsync();
-                try
+                // Must use execution strategy wrapper because SqlServerRetryingExecutionStrategy
+                // does not support user-initiated transactions directly.
+                var strategy = _dbContext.Database.CreateExecutionStrategy();
+                await strategy.ExecuteAsync(async () =>
                 {
-                    foreach (var (dlaId, entry) in validEntries)
+                    using var transaction = await _dbContext.Database.BeginTransactionAsync();
+                    try
                     {
-                        var paymentAmount = entry.RemainingBalance;
-
-                        // Mark entry as fully paid
-                        entry.AmountPaid += paymentAmount;
-                        entry.RemainingBalance = 0;
-                        entry.DatePaid = request.PaymentDate;
-                        entry.ModifiedDate = DateTime.UtcNow;
-                        await _dlaRepository.UpdateAsync(entry);
-
-                        // Create payment record
-                        var paymentId = await _dlaPaymentRepository.GenerateNextPaymentIdAsync();
-                        var paymentRecord = new DlaPayment
+                        foreach (var (dlaId, entry) in validEntries)
                         {
-                            PaymentId = paymentId,
-                            DlaId = entry.DlaId,
-                            Director = entry.Director,
-                            Amount = paymentAmount,
-                            PaymentDate = request.PaymentDate,
-                            PaymentMethod = request.PaymentMethod,
-                            PaymentReference = paymentRef,
-                            Notes = string.IsNullOrWhiteSpace(request.Notes)
-                                ? $"Batch payment {batchRef}"
-                                : $"Batch payment {batchRef}. {request.Notes}",
-                            PeriodKey = request.PaymentDate.ToString("yyyy-MM")
-                        };
-                        await _dlaPaymentRepository.CreateAsync(paymentRecord);
+                            var paymentAmount = entry.RemainingBalance;
 
-                        // Create Company Ledger entry
-                        var repaymentType = string.Equals(entry.Direction, "OwedToCompany",
-                            StringComparison.OrdinalIgnoreCase) ? "DLA_Out" : "DLA_In";
-                        var repaymentLabel = string.Equals(entry.Direction, "OwedToCompany",
-                            StringComparison.OrdinalIgnoreCase) ? "Repayment from director" : "Repayment to director";
+                            // Mark entry as fully paid
+                            entry.AmountPaid += paymentAmount;
+                            entry.RemainingBalance = 0;
+                            entry.DatePaid = request.PaymentDate;
+                            entry.ModifiedDate = DateTime.UtcNow;
+                            await _dlaRepository.UpdateAsync(entry);
 
-                        var ledgerEntry = new CompanyLedgerEntry
-                        {
-                            Title = $"DLA {repaymentLabel}: {entry.Director} - {entry.Description}",
-                            EntryType = repaymentType,
-                            Amount = paymentAmount,
-                            EffectiveDate = request.PaymentDate,
-                            Notes = $"Batch payment ref: {paymentRef}. {request.Notes ?? ""}".TrimEnd(new[] { ' ', '.' }) + ".",
-                            DlaReference = entry.DlaId,
-                            IsFullPayment = true,
-                            PeriodKey = request.PaymentDate.ToString("yyyy-MM"),
-                            TaxYear = request.PaymentDate.Year,
-                            FinancialYear = $"{request.PaymentDate.Year}/{(request.PaymentDate.Year + 1) % 100:D2}"
-                        };
-                        await _companyLedgerRepository.CreateAsync(ledgerEntry);
+                            // Create payment record
+                            var paymentId = await _dlaPaymentRepository.GenerateNextPaymentIdAsync();
+                            var paymentRecord = new DlaPayment
+                            {
+                                PaymentId = paymentId,
+                                DlaId = entry.DlaId,
+                                Director = entry.Director,
+                                Amount = paymentAmount,
+                                PaymentDate = request.PaymentDate,
+                                PaymentMethod = request.PaymentMethod,
+                                PaymentReference = paymentRef,
+                                Notes = string.IsNullOrWhiteSpace(request.Notes)
+                                    ? $"Batch payment {batchRef}"
+                                    : $"Batch payment {batchRef}. {request.Notes}",
+                                PeriodKey = request.PaymentDate.ToString("yyyy-MM")
+                            };
+                            await _dlaPaymentRepository.CreateAsync(paymentRecord);
 
-                        succeeded.Add(new
-                        {
-                            dlaId = entry.DlaId,
-                            description = entry.Description,
-                            amountPaid = paymentAmount,
-                            paymentId = paymentRecord.PaymentId
-                        });
-                        totalPaid += paymentAmount;
+                            // Create Company Ledger entry
+                            var repaymentType = string.Equals(entry.Direction, "OwedToCompany",
+                                StringComparison.OrdinalIgnoreCase) ? "DLA_Out" : "DLA_In";
+                            var repaymentLabel = string.Equals(entry.Direction, "OwedToCompany",
+                                StringComparison.OrdinalIgnoreCase) ? "Repayment from director" : "Repayment to director";
+
+                            var ledgerEntry = new CompanyLedgerEntry
+                            {
+                                Title = $"DLA {repaymentLabel}: {entry.Director} - {entry.Description}",
+                                EntryType = repaymentType,
+                                Amount = paymentAmount,
+                                EffectiveDate = request.PaymentDate,
+                                Notes = $"Batch payment ref: {paymentRef}. {request.Notes ?? ""}".TrimEnd(new[] { ' ', '.' }) + ".",
+                                DlaReference = entry.DlaId,
+                                IsFullPayment = true,
+                                PeriodKey = request.PaymentDate.ToString("yyyy-MM"),
+                                TaxYear = request.PaymentDate.Year,
+                                FinancialYear = $"{request.PaymentDate.Year}/{(request.PaymentDate.Year + 1) % 100:D2}"
+                            };
+                            await _companyLedgerRepository.CreateAsync(ledgerEntry);
+
+                            succeeded.Add(new
+                            {
+                                dlaId = entry.DlaId,
+                                description = entry.Description,
+                                amountPaid = paymentAmount,
+                                paymentId = paymentRecord.PaymentId
+                            });
+                            totalPaid += paymentAmount;
+                        }
+
+                        // All entries processed successfully — commit the transaction
+                        await transaction.CommitAsync();
                     }
-
-                    // All entries processed successfully — commit the transaction
-                    await transaction.CommitAsync();
-                }
-                catch (Exception txEx)
-                {
-                    // Transaction failed — roll back ALL changes so nothing is left half-done
-                    await transaction.RollbackAsync();
-                    _logger.LogError(txEx, "Batch DLA payment transaction failed — all changes rolled back");
-
-                    var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
-                    await errorResponse.WriteAsJsonAsync(new
+                    catch (Exception)
                     {
-                        batchRef,
-                        error = "Batch payment failed — no entries were updated. All changes have been rolled back.",
-                        detail = txEx.Message
-                    });
+                        // Transaction failed — roll back ALL changes so nothing is left half-done
+                        await transaction.RollbackAsync();
+                        throw; // re-throw so the strategy wrapper catches it
+                    }
+                });
+
+                if (succeeded.Count == 0 && validEntries.Count > 0)
+                {
+                    // This shouldn't happen unless the transaction threw (handled above)
+                    var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+                    await errorResponse.WriteAsJsonAsync(new { batchRef, error = "Transaction completed but no entries were processed." });
                     return errorResponse;
                 }
 
