@@ -865,9 +865,11 @@ namespace FinanceHubFunctions.Functions
                     ? "Repayment from director"
                     : "Repayment to director";
 
+                var ledgerTitle = $"DLA {repaymentLabel}: {dlaEntry.Director} - {dlaEntry.Description}";
+                if (ledgerTitle.Length > 250) ledgerTitle = ledgerTitle[..250];
                 var ledgerEntry = new CompanyLedgerEntry
                 {
-                    Title = $"DLA {repaymentLabel}: {dlaEntry.Director} - {dlaEntry.Description}",
+                    Title = ledgerTitle,
                     EntryType = repaymentType,
                     Amount = paymentData.PaymentAmount,
                     EffectiveDate = paymentData.PaymentDate,
@@ -1078,9 +1080,11 @@ namespace FinanceHubFunctions.Functions
                             var repaymentLabel = string.Equals(entry.Direction, "OwedToCompany",
                                 StringComparison.OrdinalIgnoreCase) ? "Repayment from director" : "Repayment to director";
 
+                            var ledgerTitle = $"DLA {repaymentLabel}: {entry.Director} - {entry.Description}";
+                            if (ledgerTitle.Length > 250) ledgerTitle = ledgerTitle[..250];
                             var ledgerEntry = new CompanyLedgerEntry
                             {
-                                Title = $"DLA {repaymentLabel}: {entry.Director} - {entry.Description}",
+                                Title = ledgerTitle,
                                 EntryType = repaymentType,
                                 Amount = paymentAmount,
                                 EffectiveDate = request.PaymentDate,
