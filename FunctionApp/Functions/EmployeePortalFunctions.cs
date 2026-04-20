@@ -429,7 +429,8 @@ namespace FinanceHubFunctions.Functions
 
                 // Calculate AMAP rates
                 var cumulativeMiles = await _mileageRepo.GetCumulativeMilesByTaxYearAsync(trip.Director, trip.TaxYear);
-                var totalMiles = trip.IsReturn ? trip.Miles : trip.Miles; // Miles already includes return if IsReturn
+                var totalMiles = trip.IsReturn ? trip.Miles * 2 : trip.Miles;
+                trip.Miles = totalMiles;
                 CalculateAmapRates(trip, totalMiles, cumulativeMiles);
 
                 var created = await _mileageRepo.CreateAsync(trip);

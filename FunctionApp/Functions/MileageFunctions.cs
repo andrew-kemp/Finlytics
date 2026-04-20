@@ -410,19 +410,27 @@ namespace FinanceHubFunctions.Functions
                 var periodEnd   = root.GetProperty("periodEnd").GetDateTime();
                 var notes       = root.TryGetProperty("notes", out var n) ? n.GetString() : null;
 
+                // Prefer explicit taxYear from the client (the currently selected tax year
+                // in the UI) so that a claim period spanning the April 6 boundary doesn't
+                // silently pick the wrong tax year from periodStart alone.
+                var taxYear = root.TryGetProperty("taxYear", out var ty) && !string.IsNullOrWhiteSpace(ty.GetString())
+                    ? ty.GetString()!
+                    : GetTaxYear(periodStart);
+
                 // Get all Draft trips for this director in the date range (not already in a claim)
+                // Must match the claim's tax year to prevent cross-tax-year bundling
                 var draftTrips = (await _tripRepository.GetDraftTripsByDirectorAsync(director))
-                    .Where(t => t.TripDate >= periodStart && t.TripDate <= periodEnd && t.ClaimId == null)
+                    .Where(t => t.TripDate >= periodStart && t.TripDate <= periodEnd
+                             && t.ClaimId == null
+                             && t.TaxYear == taxYear)
                     .ToList();
 
                 if (draftTrips.Count == 0)
                 {
                     var empty = req.CreateResponse(HttpStatusCode.BadRequest);
-                    await empty.WriteStringAsync("No unclaimed Draft trips found in this period");
+                    await empty.WriteStringAsync("No unclaimed Draft trips found in this period for tax year " + taxYear);
                     return empty;
                 }
-
-                var taxYear = GetTaxYear(periodStart);
 
                 var claim = new MileageClaim
                 {

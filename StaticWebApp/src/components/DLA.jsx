@@ -96,6 +96,7 @@ const DLA = ({ openNew }) => {
     const [filterDirection, setFilterDirection] = useState('');
     const [filterCtTag, setFilterCtTag] = useState('');
     const [filterYear, setFilterYear] = useState('');
+    const [filterPaymentStatus, setFilterPaymentStatus] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const PAGE_SIZE = 20;
 
@@ -1540,6 +1541,13 @@ const DLA = ({ openNew }) => {
         if (filterDirection && e.direction !== filterDirection) return false;
         if (filterCtTag && e.ctTag !== filterCtTag) return false;
         if (filterYear && e.taxYear !== filterYear) return false;
+        if (filterPaymentStatus) {
+            const isPaid = (e.remainingBalance || 0) <= 0 && e.datePaid;
+            const isPartial = (e.amountPaid || 0) > 0 && (e.remainingBalance || 0) > 0;
+            if (filterPaymentStatus === 'paid' && !isPaid) return false;
+            if (filterPaymentStatus === 'unpaid' && (isPaid || isPartial)) return false;
+            if (filterPaymentStatus === 'partial' && !isPartial) return false;
+        }
         return true;
     });
 
@@ -3220,11 +3228,21 @@ const DLA = ({ openNew }) => {
                     <option value="">All tax years</option>
                     {uniqueYears.map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
-                {(filterText || filterDirection || filterCtTag || filterYear) && (
+                <select
+                    value={filterPaymentStatus}
+                    onChange={e => { setFilterPaymentStatus(e.target.value); setCurrentPage(1); }}
+                    style={{ padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid rgba(0,0,0,0.2)', fontSize: '0.85rem' }}
+                >
+                    <option value="">All statuses</option>
+                    <option value="paid">✅ Paid</option>
+                    <option value="unpaid">❌ Unpaid</option>
+                    <option value="partial">⏳ Partially paid</option>
+                </select>
+                {(filterText || filterDirection || filterCtTag || filterYear || filterPaymentStatus) && (
                     <button
                         className="btn-secondary"
                         style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
-                        onClick={() => { setFilterText(''); setFilterDirection(''); setFilterCtTag(''); setFilterYear(''); setCurrentPage(1); }}
+                        onClick={() => { setFilterText(''); setFilterDirection(''); setFilterCtTag(''); setFilterYear(''); setFilterPaymentStatus(''); setCurrentPage(1); }}
                     >
                         ✖ Clear
                     </button>
@@ -3462,6 +3480,7 @@ const DLA = ({ openNew }) => {
                                 <th>Direction</th>
                                 <th>Category</th>
                                 <th>Entry Date</th>
+                                <th>Status</th>
                                 <th>Date Paid</th>
                                 <th>Net</th>
                                 <th>VAT</th>
@@ -3475,7 +3494,7 @@ const DLA = ({ openNew }) => {
                         <tbody>
                             {filtered.length === 0 ? (
                                 <tr>
-                                    <td colSpan={14 + (selectMode ? 1 : 0) + (allowDataDeletion && deleteSelectMode ? 1 : 0)} style={{ textAlign: 'center' }}>
+                                    <td colSpan={15 + (selectMode ? 1 : 0) + (allowDataDeletion && deleteSelectMode ? 1 : 0)} style={{ textAlign: 'center' }}>
                                         {dlaEntries.length === 0 ? 'No DLA entries found. Click "Add DLA Entry" to create one.' : 'No entries match the current filter.'}
                                     </td>
                                 </tr>
@@ -3521,6 +3540,14 @@ const DLA = ({ openNew }) => {
                                             )}
                                         </td>
                                         <td>{formatDate(entry.entryDate)}</td>
+                                        <td>
+                                            {(entry.remainingBalance || 0) <= 0 && entry.datePaid
+                                                ? <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#fff', backgroundColor: '#2e7d32', padding: '2px 8px', borderRadius: '10px', whiteSpace: 'nowrap' }}>Paid</span>
+                                                : (entry.amountPaid || 0) > 0 && (entry.remainingBalance || 0) > 0
+                                                    ? <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#fff', backgroundColor: '#ed6c02', padding: '2px 8px', borderRadius: '10px', whiteSpace: 'nowrap' }}>Partial</span>
+                                                    : <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#fff', backgroundColor: '#d32f2f', padding: '2px 8px', borderRadius: '10px', whiteSpace: 'nowrap' }}>Unpaid</span>
+                                            }
+                                        </td>
                                         <td>{formatDate(entry.datePaid)}</td>
                                         <td className="amount">{formatCurrency(entry.amountNet)}</td>
                                         <td className="amount">{formatCurrency(entry.vatAmount)}</td>

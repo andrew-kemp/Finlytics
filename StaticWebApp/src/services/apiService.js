@@ -2079,12 +2079,12 @@ export async function getMileageClaims({ director, taxYear } = {}) {
     return response.json();
 }
 
-export async function generateMileageClaim({ director, periodStart, periodEnd, notes }) {
+export async function generateMileageClaim({ director, periodStart, periodEnd, notes, taxYear }) {
     const headers = await getAuthHeaders();
     const response = await fetch(`${API_BASE}/mileage/claims/generate`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ director, periodStart, periodEnd, notes })
+        body: JSON.stringify({ director, periodStart, periodEnd, notes, taxYear })
     });
     if (!response.ok) {
         const err = await response.text().catch(() => 'Unknown error');

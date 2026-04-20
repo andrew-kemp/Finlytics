@@ -27,6 +27,8 @@ namespace FinanceHubFunctions.Functions
         private readonly DeletionGuardService _guard;
         private readonly IMissingReceiptDeclarationRepository _declarationRepo;
         private readonly MissingReceiptDeclarationPdfService _pdfService;
+        private readonly FinanceHubDbContext _dbContext;
+        private readonly EmailService _emailService;
 
         public DlaFunctions(
             ILogger<DlaFunctions> logger,
@@ -38,7 +40,9 @@ namespace FinanceHubFunctions.Functions
             BlobStorageService blobStorageService,
             DeletionGuardService guard,
             IMissingReceiptDeclarationRepository declarationRepo,
-            MissingReceiptDeclarationPdfService pdfService)
+            MissingReceiptDeclarationPdfService pdfService,
+            FinanceHubDbContext dbContext,
+            EmailService emailService)
         {
             _logger = logger;
             _dlaRepository = dlaRepository;
@@ -51,6 +55,8 @@ namespace FinanceHubFunctions.Functions
             _guard = guard;
             _declarationRepo = declarationRepo;
             _pdfService = pdfService;
+            _dbContext = dbContext;
+            _emailService = emailService;
         }
 
         [Function("GetDlaEntries")]
@@ -874,6 +880,48 @@ namespace FinanceHubFunctions.Functions
                 await _companyLedgerRepository.CreateAsync(ledgerEntry);
                 _logger.LogInformation($"Created Company Ledger payment entry for DLA {dlaEntry.DlaId}");
 
+                // Send confirmation email with CSV for bank upload
+                try
+                {
+                    var settings = await _companySettingsRepository.GetDefaultAsync();
+                    var recipientEmail = settings?.Email;
+                    if (!string.IsNullOrWhiteSpace(recipientEmail))
+                    {
+                        var csvLines = new List<string> { "DLA ID,Director,Description,Amount,Payment Date,Payment Method,Reference" };
+                        csvLines.Add($"\"{dlaEntry.DlaId}\",\"{dlaEntry.Director}\",\"{(dlaEntry.Description ?? "").Replace("\"", "\"\"")}\",{paymentData.PaymentAmount:F2},{paymentData.PaymentDate:yyyy-MM-dd},\"{paymentData.PaymentMethod ?? ""}\",\"{paymentRecord.PaymentId}\"");
+                        csvLines.Add($",,TOTAL,{paymentData.PaymentAmount:F2},,,");
+                        var csvContent = string.Join("\r\n", csvLines);
+                        var csvBytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(csvContent)).ToArray();
+
+                        var statusLabel = isFullPayment ? "Fully Paid" : "Partial Payment";
+                        var htmlBody = $@"
+<h2>DLA Payment Confirmation</h2>
+<p><strong>Status:</strong> {statusLabel}</p>
+<p><strong>DLA ID:</strong> {dlaEntry.DlaId}</p>
+<p><strong>Director:</strong> {dlaEntry.Director}</p>
+<p><strong>Description:</strong> {dlaEntry.Description}</p>
+<p><strong>Payment Amount:</strong> £{paymentData.PaymentAmount:N2}</p>
+<p><strong>Payment Date:</strong> {paymentData.PaymentDate:dd MMM yyyy}</p>
+<p><strong>Payment Method:</strong> {paymentData.PaymentMethod ?? "Not specified"}</p>
+<p><strong>Payment ID:</strong> {paymentRecord.PaymentId}</p>
+<hr/>
+<p><strong>Total Paid to Date:</strong> £{dlaEntry.AmountPaid:N2}</p>
+<p><strong>Remaining Balance:</strong> £{dlaEntry.RemainingBalance:N2}</p>
+<br/><p>A CSV file is attached for bank upload.</p>";
+
+                        await _emailService.SendSystemEmailAsync(
+                            recipientEmail,
+                            $"DLA Payment — {dlaEntry.DlaId} — £{paymentData.PaymentAmount:N2} — {statusLabel}",
+                            htmlBody,
+                            attachmentBytes: csvBytes,
+                            attachmentFileName: $"DLA-Payment-{dlaEntry.DlaId}-{paymentData.PaymentDate:yyyyMMdd}.csv");
+                    }
+                }
+                catch (Exception emailEx)
+                {
+                    _logger.LogWarning(emailEx, "Failed to send DLA payment confirmation email (payment was still recorded successfully)");
+                }
+
                 var response = req.CreateResponse(HttpStatusCode.OK);
                 await response.WriteAsJsonAsync(new
                 {
@@ -939,25 +987,34 @@ namespace FinanceHubFunctions.Functions
                 var errors = new List<object>();
                 decimal totalPaid = 0m;
 
+                // Validate all entries up-front before starting the transaction
+                var validEntries = new List<(string dlaId, DlaEntry entry)>();
                 foreach (var dlaId in request.DlaIds)
                 {
-                    try
+                    var entry = allEntries.FirstOrDefault(d =>
+                        string.Equals(d.DlaId, dlaId, StringComparison.OrdinalIgnoreCase));
+
+                    if (entry == null)
                     {
-                        var entry = allEntries.FirstOrDefault(d =>
-                            string.Equals(d.DlaId, dlaId, StringComparison.OrdinalIgnoreCase));
+                        errors.Add(new { dlaId, error = "Not found" });
+                        continue;
+                    }
 
-                        if (entry == null)
-                        {
-                            errors.Add(new { dlaId, error = "Not found" });
-                            continue;
-                        }
+                    if (entry.RemainingBalance <= 0)
+                    {
+                        errors.Add(new { dlaId, error = "Already fully paid" });
+                        continue;
+                    }
 
-                        if (entry.RemainingBalance <= 0)
-                        {
-                            errors.Add(new { dlaId, error = "Already fully paid" });
-                            continue;
-                        }
+                    validEntries.Add((dlaId, entry));
+                }
 
+                // Process all valid entries inside a single transaction — all or nothing
+                using var transaction = await _dbContext.Database.BeginTransactionAsync();
+                try
+                {
+                    foreach (var (dlaId, entry) in validEntries)
+                    {
                         var paymentAmount = entry.RemainingBalance;
 
                         // Mark entry as fully paid
@@ -1015,11 +1072,24 @@ namespace FinanceHubFunctions.Functions
                         });
                         totalPaid += paymentAmount;
                     }
-                    catch (Exception entryEx)
+
+                    // All entries processed successfully — commit the transaction
+                    await transaction.CommitAsync();
+                }
+                catch (Exception txEx)
+                {
+                    // Transaction failed — roll back ALL changes so nothing is left half-done
+                    await transaction.RollbackAsync();
+                    _logger.LogError(txEx, "Batch DLA payment transaction failed — all changes rolled back");
+
+                    var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+                    await errorResponse.WriteAsJsonAsync(new
                     {
-                        _logger.LogError(entryEx, $"Error processing batch payment for DLA {dlaId}");
-                        errors.Add(new { dlaId, error = entryEx.Message });
-                    }
+                        batchRef,
+                        error = "Batch payment failed — no entries were updated. All changes have been rolled back.",
+                        detail = txEx.Message
+                    });
+                    return errorResponse;
                 }
 
                 var response = req.CreateResponse(HttpStatusCode.OK);
@@ -1030,6 +1100,59 @@ namespace FinanceHubFunctions.Functions
                     success = succeeded,
                     errors
                 });
+
+                // Send confirmation email with CSV attachment for bank upload
+                try
+                {
+                    var settings = await _companySettingsRepository.GetDefaultAsync();
+                    var recipientEmail = settings?.Email;
+                    if (!string.IsNullOrWhiteSpace(recipientEmail) && validEntries.Any())
+                    {
+                        var csvLines = new List<string> { "DLA ID,Director,Description,Amount,Payment Date,Payment Method,Reference" };
+                        foreach (var (dlaId, entry) in validEntries)
+                        {
+                            var amt = entry.AmountGross; // full amount that was remaining
+                            csvLines.Add($"\"{entry.DlaId}\",\"{entry.Director}\",\"{(entry.Description ?? "").Replace("\"", "\"\"")}\",{amt:F2},{request.PaymentDate:yyyy-MM-dd},\"{request.PaymentMethod ?? ""}\",\"{paymentRef.Replace("\"", "\"\"")}\"");
+                        }
+                        csvLines.Add($",,TOTAL,{totalPaid:F2},,,");
+                        var csvContent = string.Join("\r\n", csvLines);
+                        var csvBytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(csvContent)).ToArray();
+
+                        var htmlBody = $@"
+<h2>DLA Batch Payment Confirmation</h2>
+<p><strong>Batch Reference:</strong> {batchRef}</p>
+<p><strong>Payment Date:</strong> {request.PaymentDate:dd MMM yyyy}</p>
+<p><strong>Payment Method:</strong> {request.PaymentMethod ?? "Not specified"}</p>
+<p><strong>Bank Reference:</strong> {paymentRef}</p>
+<p><strong>Total Amount:</strong> £{totalPaid:N2}</p>
+<p><strong>Entries Paid:</strong> {validEntries.Count}</p>
+<hr/>
+<table border='1' cellpadding='6' cellspacing='0' style='border-collapse:collapse; font-size:13px;'>
+<tr style='background:#f0f0f0;'><th>DLA ID</th><th>Director</th><th>Description</th><th style='text-align:right'>Amount</th></tr>";
+                        foreach (var (dlaId, entry) in validEntries)
+                        {
+                            htmlBody += $"<tr><td>{entry.DlaId}</td><td>{entry.Director}</td><td>{entry.Description}</td><td style='text-align:right'>£{entry.AmountGross:N2}</td></tr>";
+                        }
+                        htmlBody += $"<tr style='font-weight:bold;background:#f9f9f9;'><td colspan='3'>TOTAL</td><td style='text-align:right'>£{totalPaid:N2}</td></tr></table>";
+                        htmlBody += "<br/><p>A CSV file is attached for bank upload.</p>";
+                        if (errors.Any())
+                        {
+                            htmlBody += $"<p style='color:#c00;'>⚠️ {errors.Count} entry/entries were skipped (already paid or not found). See API response for details.</p>";
+                        }
+
+                        await _emailService.SendSystemEmailAsync(
+                            recipientEmail,
+                            $"DLA Batch Payment — {validEntries.Count} entries — £{totalPaid:N2} — {batchRef}",
+                            htmlBody,
+                            attachmentBytes: csvBytes,
+                            attachmentFileName: $"DLA-Payment-{batchRef}.csv");
+                    }
+                }
+                catch (Exception emailEx)
+                {
+                    _logger.LogWarning(emailEx, "Failed to send batch payment confirmation email (payments were still recorded successfully)");
+                }
+
                 return response;
             }
             catch (Exception ex)

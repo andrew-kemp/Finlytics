@@ -247,7 +247,7 @@ const MileageTrips = ({ openNew }) => {
         e.preventDefault();
         setProcessing(true);
         try {
-            await generateMileageClaim(claimForm);
+            await generateMileageClaim({ ...claimForm, taxYear });
             showToast('Claim generated', 'success');
             setShowClaimModal(false);
             setActiveTab('claims');
