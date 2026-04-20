@@ -966,13 +966,18 @@ namespace FinanceHubFunctions.Functions
 
             try
             {
-                var request = await req.ReadFromJsonAsync<DlaBatchPaymentRequest>();
+                var requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+                var request = JsonSerializer.Deserialize<DlaBatchPaymentRequest>(requestBody,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 if (request == null || request.DlaIds == null || !request.DlaIds.Any())
                 {
+                    _logger.LogWarning("Batch payment request had no DLA IDs. Body: {Body}", requestBody);
                     var badReq = req.CreateResponse(HttpStatusCode.BadRequest);
-                    await badReq.WriteStringAsync("No DLA IDs provided");
+                    await badReq.WriteAsJsonAsync(new { error = "No DLA IDs provided", receivedBody = requestBody.Length > 500 ? requestBody[..500] : requestBody });
                     return badReq;
                 }
+
+                _logger.LogInformation($"Batch payment request received: {request.DlaIds.Count} DLA IDs");
 
                 // Generate a shared batch reference for this payment run
                 string batchRef = $"BATCH-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
@@ -996,18 +1001,29 @@ namespace FinanceHubFunctions.Functions
 
                     if (entry == null)
                     {
+                        _logger.LogWarning($"Batch payment: DLA ID '{dlaId}' not found in {allEntries.Count()} entries");
                         errors.Add(new { dlaId, error = "Not found" });
                         continue;
                     }
 
+                    // Self-heal: if RemainingBalance is stale/zero but entry clearly isn't paid, recompute
+                    if (entry.RemainingBalance <= 0 && entry.AmountGross > 0 && entry.AmountPaid < entry.AmountGross && entry.DatePaid == null)
+                    {
+                        entry.RemainingBalance = entry.AmountGross - entry.AmountPaid;
+                        _logger.LogWarning($"Batch payment: Self-healed RemainingBalance for {entry.DlaId} to {entry.RemainingBalance}");
+                    }
+
                     if (entry.RemainingBalance <= 0)
                     {
+                        _logger.LogWarning($"Batch payment: DLA ID '{dlaId}' skipped — RemainingBalance={entry.RemainingBalance}, AmountPaid={entry.AmountPaid}, AmountGross={entry.AmountGross}, DatePaid={entry.DatePaid}");
                         errors.Add(new { dlaId, error = "Already fully paid" });
                         continue;
                     }
 
-                    validEntries.Add((dlaId, entry));
+                    validEntries.Add((dlaId: dlaId, entry: entry));
                 }
+
+                _logger.LogInformation($"Batch payment validation: {validEntries.Count} valid, {errors.Count} errors out of {request.DlaIds.Count} requested");
 
                 // Process all valid entries inside a single transaction — all or nothing
                 using var transaction = await _dbContext.Database.BeginTransactionAsync();

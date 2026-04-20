@@ -859,9 +859,14 @@ const DLA = ({ openNew }) => {
                 body: JSON.stringify(payload)
             });
 
-            if (!response.ok) throw new Error('Failed to record batch payment');
+            if (!response.ok) {
+                const errBody = await response.text();
+                console.error('Batch payment failed:', response.status, errBody);
+                throw new Error(`Failed to record batch payment (${response.status})`);
+            }
 
             const result = await response.json();
+            console.log('Batch payment result:', JSON.stringify(result));
             await loadData();
             setShowBulkPaymentModal(false);
             setSelectedEntries(new Set());
@@ -869,10 +874,11 @@ const DLA = ({ openNew }) => {
 
             const successCount = result.success?.length || 0;
             const errorCount = result.errors?.length || 0;
+            const errorDetails = result.errors?.map(e => `${e.dlaId}: ${e.error}`).join(', ');
             showToast(
                 `Batch payment recorded: ${successCount} entr${successCount === 1 ? 'y' : 'ies'} paid off` +
-                (errorCount > 0 ? `, ${errorCount} error${errorCount === 1 ? '' : 's'}` : ''),
-                errorCount > 0 ? 'warning' : 'success'
+                (errorCount > 0 ? ` | ${errorCount} skipped (${errorDetails})` : ''),
+                successCount === 0 ? 'error' : errorCount > 0 ? 'warning' : 'success'
             );
         } catch (error) {
             console.error('Error recording batch payment:', error);
