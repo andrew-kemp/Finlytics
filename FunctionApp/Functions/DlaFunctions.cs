@@ -1036,6 +1036,12 @@ namespace FinanceHubFunctions.Functions
                     using var transaction = await _dbContext.Database.BeginTransactionAsync();
                     try
                     {
+                        // Pre-generate payment IDs: get the starting number once, then increment in-memory
+                        var basePaymentId = await _dlaPaymentRepository.GenerateNextPaymentIdAsync();
+                        var baseParts = basePaymentId.Split('-');
+                        int paymentCounter = int.Parse(baseParts[3]);
+                        string paymentYearStr = baseParts[2];
+
                         foreach (var (dlaId, entry) in validEntries)
                         {
                             var paymentAmount = entry.RemainingBalance;
@@ -1047,8 +1053,9 @@ namespace FinanceHubFunctions.Functions
                             entry.ModifiedDate = DateTime.UtcNow;
                             await _dlaRepository.UpdateAsync(entry);
 
-                            // Create payment record
-                            var paymentId = await _dlaPaymentRepository.GenerateNextPaymentIdAsync();
+                            // Create payment record with sequentially generated ID
+                            var paymentId = $"DLA-PAY-{paymentYearStr}-{paymentCounter:D4}";
+                            paymentCounter++;
                             var paymentRecord = new DlaPayment
                             {
                                 PaymentId = paymentId,
