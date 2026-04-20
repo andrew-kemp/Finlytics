@@ -3198,6 +3198,36 @@ const DLA = ({ openNew }) => {
                 </div>
             )}
 
+            {/* ── Payment status toggle ─────────────────────────────── */}
+            <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, marginRight: '0.5rem', color: '#555' }}>Show:</span>
+                {[
+                    { value: '', label: 'All', icon: '📋' },
+                    { value: 'unpaid', label: 'Unpaid', icon: '❌' },
+                    { value: 'partial', label: 'Partial', icon: '⏳' },
+                    { value: 'paid', label: 'Paid', icon: '✅' },
+                ].map(opt => (
+                    <button
+                        key={opt.value}
+                        onClick={() => { setFilterPaymentStatus(opt.value); setCurrentPage(1); }}
+                        style={{
+                            padding: '0.35rem 0.75rem',
+                            fontSize: '0.85rem',
+                            fontWeight: filterPaymentStatus === opt.value ? 700 : 500,
+                            border: filterPaymentStatus === opt.value ? '2px solid #1565C0' : '1px solid rgba(0,0,0,0.2)',
+                            borderRadius: '20px',
+                            cursor: 'pointer',
+                            background: filterPaymentStatus === opt.value ? '#E3F2FD' : '#fff',
+                            color: filterPaymentStatus === opt.value ? '#1565C0' : '#333',
+                            transition: 'all 0.15s ease',
+                            whiteSpace: 'nowrap',
+                        }}
+                    >
+                        {opt.icon} {opt.label}
+                    </button>
+                ))}
+            </div>
+
             {/* ── Filter bar ────────────────────────────────────────────── */}
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
                 <input
@@ -3233,16 +3263,6 @@ const DLA = ({ openNew }) => {
                 >
                     <option value="">All tax years</option>
                     {uniqueYears.map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
-                <select
-                    value={filterPaymentStatus}
-                    onChange={e => { setFilterPaymentStatus(e.target.value); setCurrentPage(1); }}
-                    style={{ padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid rgba(0,0,0,0.2)', fontSize: '0.85rem' }}
-                >
-                    <option value="">All statuses</option>
-                    <option value="paid">✅ Paid</option>
-                    <option value="unpaid">❌ Unpaid</option>
-                    <option value="partial">⏳ Partially paid</option>
                 </select>
                 {(filterText || filterDirection || filterCtTag || filterYear || filterPaymentStatus) && (
                     <button
