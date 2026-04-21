@@ -774,9 +774,18 @@ const DLA = ({ openNew }) => {
                 throw new Error('Failed to record payment');
             }
 
+            const result = await response.json();
             await loadData();
             setShowPaymentModal(false);
             setPaymentEntry(null);
+
+            const emailWarning = result.emailNotification?.warning;
+            const message = result.message || 'Payment recorded successfully';
+            if (emailWarning) {
+                showToast(`${message} | Email notification issue: ${emailWarning}`, 'warning');
+            } else {
+                showToast(message, 'success');
+            }
         } catch (error) {
             console.error('Error recording payment:', error);
             alert('Failed to record payment. Please try again.');
@@ -875,10 +884,12 @@ const DLA = ({ openNew }) => {
             const successCount = result.success?.length || 0;
             const errorCount = result.errors?.length || 0;
             const errorDetails = result.errors?.map(e => `${e.dlaId}: ${e.error}`).join(', ');
+            const emailWarning = result.emailNotification?.warning;
             showToast(
                 `Batch payment recorded: ${successCount} entr${successCount === 1 ? 'y' : 'ies'} paid off` +
-                (errorCount > 0 ? ` | ${errorCount} skipped (${errorDetails})` : ''),
-                successCount === 0 ? 'error' : errorCount > 0 ? 'warning' : 'success'
+                (errorCount > 0 ? ` | ${errorCount} skipped (${errorDetails})` : '') +
+                (emailWarning ? ` | Email notification issue: ${emailWarning}` : ''),
+                successCount === 0 ? 'error' : (errorCount > 0 || emailWarning) ? 'warning' : 'success'
             );
         } catch (error) {
             console.error('Error recording batch payment:', error);

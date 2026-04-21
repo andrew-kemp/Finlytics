@@ -885,12 +885,18 @@ namespace FinanceHubFunctions.Functions
                 _logger.LogInformation($"Created Company Ledger payment entry for DLA {dlaEntry.DlaId}");
 
                 // Send confirmation email with CSV for bank upload
+                var emailAttempted = false;
+                var emailSent = false;
+                string? emailWarning = null;
+                string? emailRecipient = null;
                 try
                 {
                     var settings = await _companySettingsRepository.GetDefaultAsync();
                     var recipientEmail = settings?.Email;
+                    emailRecipient = recipientEmail;
                     if (!string.IsNullOrWhiteSpace(recipientEmail))
                     {
+                        emailAttempted = true;
                         var csvLines = new List<string> { "DLA ID,Director,Description,Amount,Payment Date,Payment Method,Reference" };
                         csvLines.Add($"\"{dlaEntry.DlaId}\",\"{dlaEntry.Director}\",\"{(dlaEntry.Description ?? "").Replace("\"", "\"\"")}\",{paymentData.PaymentAmount:F2},{paymentData.PaymentDate:yyyy-MM-dd},\"{paymentData.PaymentMethod ?? ""}\",\"{paymentRecord.PaymentId}\"");
                         csvLines.Add($",,TOTAL,{paymentData.PaymentAmount:F2},,,");
@@ -913,16 +919,29 @@ namespace FinanceHubFunctions.Functions
 <p><strong>Remaining Balance:</strong> £{dlaEntry.RemainingBalance:N2}</p>
 <br/><p>A CSV file is attached for bank upload.</p>";
 
-                        await _emailService.SendSystemEmailAsync(
+                        var (success, error) = await _emailService.SendSystemEmailAsync(
                             recipientEmail,
                             $"DLA Payment — {dlaEntry.DlaId} — £{paymentData.PaymentAmount:N2} — {statusLabel}",
                             htmlBody,
                             attachmentBytes: csvBytes,
                             attachmentFileName: $"DLA-Payment-{dlaEntry.DlaId}-{paymentData.PaymentDate:yyyyMMdd}.csv");
+
+                        emailSent = success;
+                        if (!success)
+                        {
+                            emailWarning = string.IsNullOrWhiteSpace(error) ? "Email send failed" : error;
+                            _logger.LogWarning("DLA payment confirmation email failed for {DlaId}: {EmailError}", dlaEntry.DlaId, emailWarning);
+                        }
+                    }
+                    else
+                    {
+                        emailWarning = "No recipient email configured in Company Settings.";
+                        _logger.LogWarning("DLA payment confirmation email skipped for {DlaId}: no recipient email configured", dlaEntry.DlaId);
                     }
                 }
                 catch (Exception emailEx)
                 {
+                    emailWarning = emailEx.Message;
                     _logger.LogWarning(emailEx, "Failed to send DLA payment confirmation email (payment was still recorded successfully)");
                 }
 
@@ -935,7 +954,14 @@ namespace FinanceHubFunctions.Functions
                     dlaEntry.RemainingBalance,
                     IsFullyPaid = isFullPayment,
                     PaymentId = paymentRecord.PaymentId,
-                    Message = isFullPayment ? "DLA fully paid off" : $"Payment recorded. Remaining balance: {dlaEntry.RemainingBalance:C}"
+                    Message = isFullPayment ? "DLA fully paid off" : $"Payment recorded. Remaining balance: {dlaEntry.RemainingBalance:C}",
+                    EmailNotification = new
+                    {
+                        attempted = emailAttempted,
+                        sent = emailSent,
+                        recipient = emailRecipient,
+                        warning = emailWarning
+                    }
                 });
                 return response;
             }
@@ -1126,22 +1152,19 @@ namespace FinanceHubFunctions.Functions
                     return errorResponse;
                 }
 
-                var response = req.CreateResponse(HttpStatusCode.OK);
-                await response.WriteAsJsonAsync(new
-                {
-                    batchRef,
-                    totalAmount = totalPaid,
-                    success = succeeded,
-                    errors
-                });
-
                 // Send confirmation email with CSV attachment for bank upload
+                var emailAttempted = false;
+                var emailSent = false;
+                string? emailWarning = null;
+                string? emailRecipient = null;
                 try
                 {
                     var settings = await _companySettingsRepository.GetDefaultAsync();
                     var recipientEmail = settings?.Email;
+                    emailRecipient = recipientEmail;
                     if (!string.IsNullOrWhiteSpace(recipientEmail) && validEntries.Any())
                     {
+                        emailAttempted = true;
                         var csvLines = new List<string> { "DLA ID,Director,Description,Amount,Payment Date,Payment Method,Reference" };
                         foreach (var (dlaId, entry) in validEntries)
                         {
@@ -1174,18 +1197,47 @@ namespace FinanceHubFunctions.Functions
                             htmlBody += $"<p style='color:#c00;'>⚠️ {errors.Count} entry/entries were skipped (already paid or not found). See API response for details.</p>";
                         }
 
-                        await _emailService.SendSystemEmailAsync(
+                        var (success, error) = await _emailService.SendSystemEmailAsync(
                             recipientEmail,
                             $"DLA Batch Payment — {validEntries.Count} entries — £{totalPaid:N2} — {batchRef}",
                             htmlBody,
                             attachmentBytes: csvBytes,
                             attachmentFileName: $"DLA-Payment-{batchRef}.csv");
+
+                        emailSent = success;
+                        if (!success)
+                        {
+                            emailWarning = string.IsNullOrWhiteSpace(error) ? "Email send failed" : error;
+                            _logger.LogWarning("DLA batch payment confirmation email failed for {BatchRef}: {EmailError}", batchRef, emailWarning);
+                        }
+                    }
+                    else if (string.IsNullOrWhiteSpace(recipientEmail))
+                    {
+                        emailWarning = "No recipient email configured in Company Settings.";
+                        _logger.LogWarning("DLA batch payment confirmation email skipped for {BatchRef}: no recipient email configured", batchRef);
                     }
                 }
                 catch (Exception emailEx)
                 {
+                    emailWarning = emailEx.Message;
                     _logger.LogWarning(emailEx, "Failed to send batch payment confirmation email (payments were still recorded successfully)");
                 }
+
+                var response = req.CreateResponse(HttpStatusCode.OK);
+                await response.WriteAsJsonAsync(new
+                {
+                    batchRef,
+                    totalAmount = totalPaid,
+                    success = succeeded,
+                    errors,
+                    EmailNotification = new
+                    {
+                        attempted = emailAttempted,
+                        sent = emailSent,
+                        recipient = emailRecipient,
+                        warning = emailWarning
+                    }
+                });
 
                 return response;
             }
