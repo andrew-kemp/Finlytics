@@ -926,33 +926,25 @@ namespace FinanceHubFunctions.Functions
                         var csvContent = string.Join("\r\n", csvLines);
                         var csvBytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(csvContent)).ToArray();
 
-                        var statusLabel = isFullPayment ? "Fully Paid" : "Partial Payment";
-                        var htmlBody = $@"
-<h2>DLA Payment Confirmation</h2>
-<p><strong>Status:</strong> {statusLabel}</p>
-<p><strong>DLA ID:</strong> {dlaEntry.DlaId}</p>
-<p><strong>Director:</strong> {dlaEntry.Director}</p>
-<p><strong>Description:</strong> {dlaEntry.Description}</p>
-<p><strong>Payment Amount:</strong> £{paymentData.PaymentAmount:N2}</p>
-<p><strong>Payment Date:</strong> {paymentData.PaymentDate:dd MMM yyyy}</p>
-<p><strong>Payment Method:</strong> {paymentData.PaymentMethod ?? "Not specified"}</p>
-<p><strong>Payment ID:</strong> {paymentRecord.PaymentId}</p>
-<hr/>
-<p><strong>Total Paid to Date:</strong> £{dlaEntry.AmountPaid:N2}</p>
-<p><strong>Remaining Balance:</strong> £{dlaEntry.RemainingBalance:N2}</p>
-<br/><p>A CSV file is attached for bank upload.</p>";
-
-                        var (success, error) = await _emailService.SendSystemEmailAsync(
+                        var emailResult = await _emailService.SendDlaPaymentEmailAsync(
                             recipientEmail,
-                            $"DLA Payment — {dlaEntry.DlaId} — £{paymentData.PaymentAmount:N2} — {statusLabel}",
-                            htmlBody,
-                            attachmentBytes: csvBytes,
-                            attachmentFileName: $"DLA-Payment-{dlaEntry.DlaId}-{paymentData.PaymentDate:yyyyMMdd}.csv");
+                            dlaEntry.DlaId,
+                            dlaEntry.Director,
+                            dlaEntry.Description,
+                            paymentData.PaymentAmount,
+                            paymentData.PaymentDate,
+                            paymentData.PaymentMethod,
+                            paymentRecord.PaymentId,
+                            dlaEntry.AmountPaid,
+                            dlaEntry.RemainingBalance,
+                            isFullPayment,
+                            csvBytes,
+                            $"DLA-Payment-{dlaEntry.DlaId}-{paymentData.PaymentDate:yyyyMMdd}.csv");
 
-                        emailSent = success;
-                        if (!success)
+                        emailSent = emailResult.Success;
+                        if (!emailResult.Success)
                         {
-                            emailWarning = string.IsNullOrWhiteSpace(error) ? "Email send failed" : error;
+                            emailWarning = string.IsNullOrWhiteSpace(emailResult.Error) ? "Email send failed" : emailResult.Error;
                             _logger.LogWarning("DLA payment confirmation email failed for {DlaId}: {EmailError}", dlaEntry.DlaId, emailWarning);
                         }
                     }
@@ -1211,39 +1203,26 @@ namespace FinanceHubFunctions.Functions
                         var csvContent = string.Join("\r\n", csvLines);
                         var csvBytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(csvContent)).ToArray();
 
-                        var htmlBody = $@"
-<h2>DLA Batch Payment Confirmation</h2>
-<p><strong>Batch Reference:</strong> {batchRef}</p>
-<p><strong>Payment Date:</strong> {request.PaymentDate:dd MMM yyyy}</p>
-<p><strong>Payment Method:</strong> {request.PaymentMethod ?? "Not specified"}</p>
-<p><strong>Bank Reference:</strong> {paymentRef}</p>
-<p><strong>Total Amount:</strong> £{totalPaid:N2}</p>
-<p><strong>Entries Paid:</strong> {validEntries.Count}</p>
-<hr/>
-<table border='1' cellpadding='6' cellspacing='0' style='border-collapse:collapse; font-size:13px;'>
-<tr style='background:#f0f0f0;'><th>DLA ID</th><th>Director</th><th>Description</th><th style='text-align:right'>Amount</th></tr>";
-                        foreach (var (dlaId, entry) in validEntries)
-                        {
-                            htmlBody += $"<tr><td>{entry.DlaId}</td><td>{entry.Director}</td><td>{entry.Description}</td><td style='text-align:right'>£{entry.AmountGross:N2}</td></tr>";
-                        }
-                        htmlBody += $"<tr style='font-weight:bold;background:#f9f9f9;'><td colspan='3'>TOTAL</td><td style='text-align:right'>£{totalPaid:N2}</td></tr></table>";
-                        htmlBody += "<br/><p>A CSV file is attached for bank upload.</p>";
-                        if (errors.Any())
-                        {
-                            htmlBody += $"<p style='color:#c00;'>⚠️ {errors.Count} entry/entries were skipped (already paid or not found). See API response for details.</p>";
-                        }
+                        var entryList = validEntries
+                            .Select(e => (e.entry.DlaId, e.entry.Director ?? "", e.entry.Description ?? "", e.entry.AmountGross))
+                            .ToList();
 
-                        var (success, error) = await _emailService.SendSystemEmailAsync(
+                        var emailResult = await _emailService.SendDlaBatchPaymentEmailAsync(
                             recipientEmail,
-                            $"DLA Batch Payment — {validEntries.Count} entries — £{totalPaid:N2} — {batchRef}",
-                            htmlBody,
-                            attachmentBytes: csvBytes,
-                            attachmentFileName: $"DLA-Payment-{batchRef}.csv");
+                            batchRef,
+                            request.PaymentDate,
+                            request.PaymentMethod,
+                            paymentRef,
+                            totalPaid,
+                            entryList,
+                            errors.Count,
+                            csvBytes,
+                            $"DLA-Payment-{batchRef}.csv");
 
-                        emailSent = success;
-                        if (!success)
+                        emailSent = emailResult.Success;
+                        if (!emailResult.Success)
                         {
-                            emailWarning = string.IsNullOrWhiteSpace(error) ? "Email send failed" : error;
+                            emailWarning = string.IsNullOrWhiteSpace(emailResult.Error) ? "Email send failed" : emailResult.Error;
                             _logger.LogWarning("DLA batch payment confirmation email failed for {BatchRef}: {EmailError}", batchRef, emailWarning);
                         }
                     }

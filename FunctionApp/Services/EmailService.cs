@@ -1056,5 +1056,126 @@ namespace FinanceHubFunctions.Services
                 bccAddresses
             );
         }
+
+        // ─── DLA Payment email ───────────────────────────────────────────────────
+        public async Task<EmailSendResult> SendDlaPaymentEmailAsync(
+            string toEmail,
+            string dlaId,
+            string director,
+            string description,
+            decimal paymentAmount,
+            DateTime paymentDate,
+            string paymentMethod,
+            string paymentId,
+            decimal totalPaid,
+            decimal remainingBalance,
+            bool isFullPayment,
+            byte[] csvBytes,
+            string csvFileName)
+        {
+            var emailTemplate   = new EmailTemplateService(_blobStorageService);
+            var companySettings = await GetCompanySettingsAsync("");
+            if (companySettings == null)
+                return new EmailSendResult(false, "Company settings not found");
+
+            var statusLabel = isFullPayment ? "Fully Paid" : "Partial Payment";
+            var statusColor = isFullPayment ? "#16a34a" : "#b45309";
+
+            var placeholders = new Dictionary<string, string>
+            {
+                ["EMAIL_SUBJECT"]     = $"DLA Payment — {dlaId} — £{paymentAmount:N2} — {statusLabel}",
+                ["STATUS_LABEL"]      = statusLabel,
+                ["STATUS_COLOR"]      = statusColor,
+                ["DLA_ID"]            = dlaId,
+                ["DIRECTOR"]          = director ?? "",
+                ["DESCRIPTION"]       = description ?? "",
+                ["PAYMENT_AMOUNT"]    = paymentAmount.ToString("N2"),
+                ["PAYMENT_DATE"]      = paymentDate.ToString("dd MMM yyyy"),
+                ["PAYMENT_METHOD"]    = paymentMethod ?? "Not specified",
+                ["PAYMENT_ID"]        = paymentId ?? "",
+                ["TOTAL_PAID"]        = totalPaid.ToString("N2"),
+                ["REMAINING_BALANCE"] = remainingBalance.ToString("N2"),
+            };
+
+            var (logoBytes, logoContentType, logoContentId, logoSrcOverride) = await TryGetInlineLogoAsync(companySettings);
+            var htmlBody = await emailTemplate.GenerateEmailHtmlAsync("dla_payment", companySettings, placeholders, logoSrcOverride);
+
+            var fromAddress = !string.IsNullOrWhiteSpace(companySettings.PaymentsEmail)
+                ? companySettings.PaymentsEmail
+                : companySettings.SmtpFromAddress;
+
+            return await SendEmailWithResultAsync(
+                toEmail,
+                $"DLA Payment — {dlaId} — £{paymentAmount:N2} — {statusLabel}",
+                htmlBody,
+                accessToken: "",
+                csvBytes,
+                csvFileName,
+                logoBytes,
+                logoContentType,
+                logoContentId,
+                fromAddress);
+        }
+
+        // ─── DLA Batch Payment email ─────────────────────────────────────────────
+        public async Task<EmailSendResult> SendDlaBatchPaymentEmailAsync(
+            string toEmail,
+            string batchRef,
+            DateTime paymentDate,
+            string paymentMethod,
+            string bankRef,
+            decimal totalAmount,
+            List<(string DlaId, string Director, string Description, decimal Amount)> entries,
+            int skippedCount,
+            byte[] csvBytes,
+            string csvFileName)
+        {
+            var emailTemplate   = new EmailTemplateService(_blobStorageService);
+            var companySettings = await GetCompanySettingsAsync("");
+            if (companySettings == null)
+                return new EmailSendResult(false, "Company settings not found");
+
+            var tbl = new System.Text.StringBuilder();
+            tbl.Append("<table border='1' cellpadding='6' cellspacing='0' style='border-collapse:collapse;font-size:13px;width:100%;margin-top:10px;'>");
+            tbl.Append("<thead><tr style='background:#0f2a4a;color:#fff;'><th>DLA ID</th><th>Director</th><th>Description</th><th style='text-align:right'>Amount</th></tr></thead><tbody>");
+            foreach (var (dlaId, director, desc, amount) in entries)
+                tbl.Append($"<tr><td>{System.Net.WebUtility.HtmlEncode(dlaId)}</td><td>{System.Net.WebUtility.HtmlEncode(director)}</td><td>{System.Net.WebUtility.HtmlEncode(desc)}</td><td style='text-align:right'>£{amount:N2}</td></tr>");
+            tbl.Append($"<tr style='font-weight:bold;background:#f1f5f9;'><td colspan='3'>TOTAL</td><td style='text-align:right'>£{totalAmount:N2}</td></tr>");
+            tbl.Append("</tbody></table>");
+
+            var placeholders = new Dictionary<string, string>
+            {
+                ["EMAIL_SUBJECT"]  = $"DLA Batch Payment — {entries.Count} entries — £{totalAmount:N2} — {batchRef}",
+                ["BATCH_REF"]      = batchRef,
+                ["PAYMENT_DATE"]   = paymentDate.ToString("dd MMM yyyy"),
+                ["PAYMENT_METHOD"] = paymentMethod ?? "Not specified",
+                ["BANK_REF"]       = bankRef ?? "",
+                ["TOTAL_AMOUNT"]   = totalAmount.ToString("N2"),
+                ["ENTRY_COUNT"]    = entries.Count.ToString(),
+                ["ENTRIES_TABLE"]  = tbl.ToString(),
+                ["SKIP_WARNING"]   = skippedCount > 0
+                    ? $"{skippedCount} entry/entries were skipped (already paid or not found)."
+                    : "",
+            };
+
+            var (logoBytes, logoContentType, logoContentId, logoSrcOverride) = await TryGetInlineLogoAsync(companySettings);
+            var htmlBody = await emailTemplate.GenerateEmailHtmlAsync("dla_batch_payment", companySettings, placeholders, logoSrcOverride);
+
+            var fromAddress = !string.IsNullOrWhiteSpace(companySettings.PaymentsEmail)
+                ? companySettings.PaymentsEmail
+                : companySettings.SmtpFromAddress;
+
+            return await SendEmailWithResultAsync(
+                toEmail,
+                $"DLA Batch Payment — {entries.Count} entries — £{totalAmount:N2} — {batchRef}",
+                htmlBody,
+                accessToken: "",
+                csvBytes,
+                csvFileName,
+                logoBytes,
+                logoContentType,
+                logoContentId,
+                fromAddress);
+        }
     }
 }

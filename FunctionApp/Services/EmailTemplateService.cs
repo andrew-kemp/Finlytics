@@ -332,6 +332,49 @@ namespace FinanceHubFunctions.Services
                 </div>
                 <p><strong>Reason:</strong> {{REASON}}</p>
                 <p>This credit note may be applied against a future invoice or refunded at your request. Please contact us if you have any questions.</p>
+                <p>Best regards,<br/>{{COMPANY_NAME}}</p>",
+
+            ["dla_payment"] = @"
+                <h2>DLA Payment Confirmation</h2>
+                <p>Hello,</p>
+                <p>A DLA repayment has been recorded for <strong>{{DIRECTOR}}</strong>.</p>
+                <div class='highlight'>
+                    <table class='summary-table'>
+                        <tr>
+                            <td class='label'>Status</td>
+                            <td class='value' style='color:{{STATUS_COLOR}};font-weight:bold;'>{{STATUS_LABEL}}</td>
+                        </tr>
+                        <tr><td class='label'>DLA ID</td><td class='value'>{{DLA_ID}}</td></tr>
+                        <tr><td class='label'>Director</td><td class='value'>{{DIRECTOR}}</td></tr>
+                        <tr><td class='label'>Description</td><td class='value'>{{DESCRIPTION}}</td></tr>
+                        <tr><td class='label'>Payment Amount</td><td class='value' style='font-size:16px;font-weight:bold;'>£{{PAYMENT_AMOUNT}}</td></tr>
+                        <tr><td class='label'>Payment Date</td><td class='value'>{{PAYMENT_DATE}}</td></tr>
+                        <tr><td class='label'>Payment Method</td><td class='value'>{{PAYMENT_METHOD}}</td></tr>
+                        <tr><td class='label'>Payment ID</td><td class='value'>{{PAYMENT_ID}}</td></tr>
+                        <tr><td class='label'>Total Paid to Date</td><td class='value'>£{{TOTAL_PAID}}</td></tr>
+                        <tr><td class='label'>Remaining Balance</td><td class='value'>£{{REMAINING_BALANCE}}</td></tr>
+                    </table>
+                </div>
+                <p>A CSV file is attached for your records.</p>
+                <p>Best regards,<br/>{{COMPANY_NAME}}</p>",
+
+            ["dla_batch_payment"] = @"
+                <h2>DLA Batch Payment Confirmation</h2>
+                <p>Hello,</p>
+                <p>A batch DLA repayment has been processed. Please find the details below.</p>
+                <div class='highlight'>
+                    <table class='summary-table'>
+                        <tr><td class='label'>Batch Reference</td><td class='value'><strong>{{BATCH_REF}}</strong></td></tr>
+                        <tr><td class='label'>Payment Date</td><td class='value'>{{PAYMENT_DATE}}</td></tr>
+                        <tr><td class='label'>Payment Method</td><td class='value'>{{PAYMENT_METHOD}}</td></tr>
+                        <tr><td class='label'>Bank Reference</td><td class='value'>{{BANK_REF}}</td></tr>
+                        <tr><td class='label'>Total Amount</td><td class='value' style='font-size:16px;font-weight:bold;'>£{{TOTAL_AMOUNT}}</td></tr>
+                        <tr><td class='label'>Entries Paid</td><td class='value'>{{ENTRY_COUNT}}</td></tr>
+                    </table>
+                </div>
+                {{ENTRIES_TABLE}}
+                {{#SKIP_WARNING}}<p style='color:#b91c1c;margin-top:12px;'>⚠️ {{SKIP_WARNING}}</p>{{/SKIP_WARNING}}
+                <p style='margin-top:16px;'>A CSV file is attached for your records.</p>
                 <p>Best regards,<br/>{{COMPANY_NAME}}</p>"
         };
 
