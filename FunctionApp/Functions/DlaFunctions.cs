@@ -892,7 +892,9 @@ namespace FinanceHubFunctions.Functions
                 try
                 {
                     var settings = await _companySettingsRepository.GetDefaultAsync();
-                    var recipientEmail = settings?.Email;
+                    var recipientEmail = !string.IsNullOrWhiteSpace(settings?.Email)
+                        ? settings.Email
+                        : settings?.SmtpFromAddress;
                     emailRecipient = recipientEmail;
                     if (!string.IsNullOrWhiteSpace(recipientEmail))
                     {
@@ -1160,7 +1162,9 @@ namespace FinanceHubFunctions.Functions
                 try
                 {
                     var settings = await _companySettingsRepository.GetDefaultAsync();
-                    var recipientEmail = settings?.Email;
+                    var recipientEmail = !string.IsNullOrWhiteSpace(settings?.Email)
+                        ? settings.Email
+                        : settings?.SmtpFromAddress;
                     emailRecipient = recipientEmail;
                     if (!string.IsNullOrWhiteSpace(recipientEmail) && validEntries.Any())
                     {
