@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
     getCompanyLedger, 
     createCompanyLedgerEntry, 
@@ -27,9 +27,10 @@ const CompanyLedger = () => {
     const [bulkDlaPaymentData, setBulkDlaPaymentData] = useState({
         paymentDate: new Date().toISOString().split('T')[0],
         paymentMethod: '',
-        reference: '',
+        reference: 'DLA-001',
         notes: ''
     });
+    const [expandedDlaGroups, setExpandedDlaGroups] = useState(new Set());
     const [dlaEntries, setDlaEntries] = useState([]);
     const [periodExpenses, setPeriodExpenses] = useState([]);
     const [expenseSourceFilter, setExpenseSourceFilter] = useState('all'); // 'all' | 'company' | 'employee'
@@ -335,6 +336,69 @@ const CompanyLedger = () => {
         return new Date(dateString).toLocaleDateString('en-GB');
     };
 
+    const getDlaReferencePrefix = (entry) => {
+        if (!entry || (entry.entryType !== 'DLA_In' && entry.entryType !== 'DLA_Out')) return null;
+        const match = (entry.notes || '').match(/Batch payment ref:\s*(DLA-\d{3})/i);
+        return match ? match[1].toUpperCase() : null;
+    };
+
+    const ledgerRows = useMemo(() => {
+        const groupedEntries = new Map();
+        for (const entry of entries) {
+            const ref = getDlaReferencePrefix(entry);
+            if (!ref) continue;
+            if (!groupedEntries.has(ref)) groupedEntries.set(ref, []);
+            groupedEntries.get(ref).push(entry);
+        }
+
+        const seenGroups = new Set();
+        const rows = [];
+
+        for (const entry of entries) {
+            const ref = getDlaReferencePrefix(entry);
+
+            if (!ref) {
+                rows.push({ kind: 'entry', key: `entry-${entry.id}`, entry });
+                continue;
+            }
+
+            if (seenGroups.has(ref)) continue;
+            seenGroups.add(ref);
+
+            const items = (groupedEntries.get(ref) || []).slice().sort((a, b) =>
+                new Date(a.effectiveDate).getTime() - new Date(b.effectiveDate).getTime());
+            const total = items.reduce((sum, item) => sum + (item.amount || 0), 0);
+            const latestDate = items[items.length - 1]?.effectiveDate || entry.effectiveDate;
+
+            rows.push({
+                kind: 'group',
+                key: `group-${ref}`,
+                ref,
+                total,
+                count: items.length,
+                latestDate,
+                items
+            });
+
+            if (expandedDlaGroups.has(ref)) {
+                for (const child of items) {
+                    rows.push({ kind: 'child', key: `child-${ref}-${child.id}`, ref, entry: child });
+                }
+            }
+        }
+
+        return rows;
+    }, [entries, expandedDlaGroups]);
+
+    const toggleDlaGroup = (ref) => {
+        setExpandedDlaGroups(prev => {
+            const next = new Set(prev);
+            if (next.has(ref)) next.delete(ref);
+            else next.add(ref);
+            return next;
+        });
+    };
+
     const openDlaRepayModal = () => {
         setRepayData(prev => ({
             ...prev,
@@ -395,7 +459,7 @@ const CompanyLedger = () => {
         setBulkDlaPaymentData({
             paymentDate: new Date().toISOString().split('T')[0],
             paymentMethod: '',
-            reference: '',
+            reference: 'DLA-001',
             notes: ''
         });
         setShowBulkDlaModal(true);
@@ -429,7 +493,17 @@ const CompanyLedger = () => {
                 headers,
                 body: JSON.stringify(payload)
             });
-            if (!response.ok) throw new Error('Failed to record batch payment');
+            if (!response.ok) {
+                const errBody = await response.text();
+                let errMessage = 'Failed to record batch payment';
+                try {
+                    const parsed = JSON.parse(errBody);
+                    errMessage = parsed.error || parsed.message || errBody || errMessage;
+                } catch {
+                    if (errBody) errMessage = errBody;
+                }
+                throw new Error(errMessage);
+            }
             const result = await response.json();
             await loadCompanyLedger();
             setShowBulkDlaModal(false);
@@ -439,7 +513,7 @@ const CompanyLedger = () => {
                 (errorCount > 0 ? `, ${errorCount} could not be processed` : ''));
         } catch (err) {
             console.error('Error recording batch DLA payment:', err);
-            setError('Failed to record batch DLA payment');
+            setError(err?.message || 'Failed to record batch DLA payment');
         } finally {
             setLoading(false);
         }
@@ -1103,10 +1177,15 @@ const CompanyLedger = () => {
                                                     placeholder="e.g. Bank Transfer" />
                                             </div>
                                             <div className="form-group full-width">
-                                                <label>Bank Reference <span style={{ opacity: 0.55, fontSize: '0.8rem' }}>(optional)</span></label>
-                                                <input type="text" value={bulkDlaPaymentData.reference}
+                                                <label>Payment Reference *</label>
+                                                <select value={bulkDlaPaymentData.reference}
                                                     onChange={e => setBulkDlaPaymentData(prev => ({ ...prev, reference: e.target.value }))}
-                                                    placeholder="e.g. BACS-00123" />
+                                                    required>
+                                                    <option value="DLA-001">DLA-001</option>
+                                                    <option value="DLA-002">DLA-002</option>
+                                                    <option value="DLA-003">DLA-003</option>
+                                                    <option value="DLA-004">DLA-004</option>
+                                                </select>
                                             </div>
                                             <div className="form-group full-width">
                                                 <label>Notes <span style={{ opacity: 0.55, fontSize: '0.8rem' }}>(optional)</span></label>
@@ -1149,29 +1228,78 @@ const CompanyLedger = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {entries.map(entry => (
-                                <tr key={entry.id}>
-                                    <td>{formatDate(entry.effectiveDate)}</td>
-                                    <td>{entry.title}</td>
-                                    <td>
-                                        <span className={`badge badge-${entry.entryType.toLowerCase()}`}>
-                                            {getEntryTypeLabel(entry.entryType)}
-                                        </span>
-                                    </td>
-                                    <td className="amount">{formatCurrency(entry.amount)}</td>
-                                    <td className="notes">{entry.notes}</td>
-                                    <td>
-                                        <button 
-                                            className="btn-icon"
-                                            onClick={() => handleDelete(entry.id)}
-                                            disabled={loading}
-                                            title="Delete entry"
-                                        >
-                                            🗑️
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
+                            {ledgerRows.map(row => {
+                                if (row.kind === 'group') {
+                                    const isExpanded = expandedDlaGroups.has(row.ref);
+                                    return (
+                                        <tr key={row.key} style={{ background: '#f8fafc', borderTop: '2px solid rgba(15,42,74,0.2)' }}>
+                                            <td>{formatDate(row.latestDate)}</td>
+                                            <td>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleDlaGroup(row.ref)}
+                                                    style={{
+                                                        border: 'none',
+                                                        background: 'transparent',
+                                                        cursor: 'pointer',
+                                                        fontWeight: 700,
+                                                        color: '#0f2a4a',
+                                                        padding: 0
+                                                    }}
+                                                    title={isExpanded ? 'Collapse items' : 'Expand items'}
+                                                >
+                                                    {isExpanded ? '▼' : '▶'} {row.ref} ({row.count} items)
+                                                </button>
+                                            </td>
+                                            <td>
+                                                <span style={{
+                                                    display: 'inline-block',
+                                                    padding: '0.2rem 0.5rem',
+                                                    borderRadius: '999px',
+                                                    background: '#dbeafe',
+                                                    color: '#1e40af',
+                                                    fontWeight: 600,
+                                                    fontSize: '0.75rem'
+                                                }}>
+                                                    DLA Batch
+                                                </span>
+                                            </td>
+                                            <td className="amount"><strong>{formatCurrency(row.total)}</strong></td>
+                                            <td className="notes">Grouped repayment entries for {row.ref}</td>
+                                            <td></td>
+                                        </tr>
+                                    );
+                                }
+
+                                const entry = row.entry;
+                                const isChild = row.kind === 'child';
+
+                                return (
+                                    <tr key={row.key} style={isChild ? { background: '#fcfdff' } : undefined}>
+                                        <td>{formatDate(entry.effectiveDate)}</td>
+                                        <td style={isChild ? { paddingLeft: '1.5rem' } : undefined}>
+                                            {isChild ? `↳ ${entry.title}` : entry.title}
+                                        </td>
+                                        <td>
+                                            <span className={`badge badge-${entry.entryType.toLowerCase()}`}>
+                                                {getEntryTypeLabel(entry.entryType)}
+                                            </span>
+                                        </td>
+                                        <td className="amount">{formatCurrency(entry.amount)}</td>
+                                        <td className="notes">{entry.notes}</td>
+                                        <td>
+                                            <button
+                                                className="btn-icon"
+                                                onClick={() => handleDelete(entry.id)}
+                                                disabled={loading}
+                                                title="Delete entry"
+                                            >
+                                                🗑️
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 )}
