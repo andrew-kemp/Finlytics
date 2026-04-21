@@ -871,7 +871,14 @@ const DLA = ({ openNew }) => {
             if (!response.ok) {
                 const errBody = await response.text();
                 console.error('Batch payment failed:', response.status, errBody);
-                throw new Error(`Failed to record batch payment (${response.status})`);
+                let errMessage = `Failed to record batch payment (${response.status})`;
+                try {
+                    const parsed = JSON.parse(errBody);
+                    errMessage = parsed.error || parsed.message || errBody || errMessage;
+                } catch {
+                    if (errBody) errMessage = errBody;
+                }
+                throw new Error(errMessage);
             }
 
             const result = await response.json();
@@ -893,7 +900,7 @@ const DLA = ({ openNew }) => {
             );
         } catch (error) {
             console.error('Error recording batch payment:', error);
-            alert('Failed to record batch payment. Please try again.');
+            alert(error?.message || 'Failed to record batch payment. Please try again.');
         } finally {
             setProcessing(false);
         }

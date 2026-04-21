@@ -32,6 +32,29 @@ namespace FinanceHubFunctions.Functions
         private readonly FinanceHubDbContext _dbContext;
         private readonly EmailService _emailService;
 
+        private static readonly HashSet<string> AllowedBatchReferences = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "DLA-001",
+            "DLA-002",
+            "DLA-003",
+            "DLA-004"
+        };
+
+        private static string? ResolveDlaNotificationRecipient(CompanySettings? settings)
+        {
+            if (settings == null) return null;
+
+            var candidates = new[]
+            {
+                settings.PaymentsEmail,
+                settings.Email,
+                settings.CompanyEmail,
+                settings.SmtpFromAddress
+            };
+
+            return candidates.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+        }
+
         public DlaFunctions(
             ILogger<DlaFunctions> logger,
             IDlaRepository dlaRepository,
@@ -892,9 +915,7 @@ namespace FinanceHubFunctions.Functions
                 try
                 {
                     var settings = await _companySettingsRepository.GetDefaultAsync();
-                    var recipientEmail = !string.IsNullOrWhiteSpace(settings?.Email)
-                        ? settings.Email
-                        : settings?.SmtpFromAddress;
+                    var recipientEmail = ResolveDlaNotificationRecipient(settings);
                     emailRecipient = recipientEmail;
                     if (!string.IsNullOrWhiteSpace(recipientEmail))
                     {
@@ -1009,13 +1030,26 @@ namespace FinanceHubFunctions.Functions
                     return badReq;
                 }
 
+                if (string.IsNullOrWhiteSpace(request.Reference))
+                {
+                    var badReq = req.CreateResponse(HttpStatusCode.BadRequest);
+                    await badReq.WriteAsJsonAsync(new { error = "Reference is required and must be one of: DLA-001, DLA-002, DLA-003, DLA-004." });
+                    return badReq;
+                }
+
+                var normalizedReference = request.Reference.Trim().ToUpperInvariant();
+                if (!AllowedBatchReferences.Contains(normalizedReference))
+                {
+                    var badReq = req.CreateResponse(HttpStatusCode.BadRequest);
+                    await badReq.WriteAsJsonAsync(new { error = "Invalid reference. Allowed values: DLA-001, DLA-002, DLA-003, DLA-004." });
+                    return badReq;
+                }
+
                 _logger.LogInformation($"Batch payment request received: {request.DlaIds.Count} DLA IDs");
 
                 // Generate a shared batch reference for this payment run
                 string batchRef = $"BATCH-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
-                string paymentRef = string.IsNullOrWhiteSpace(request.Reference)
-                    ? batchRef
-                    : $"{request.Reference} ({batchRef})";
+                string paymentRef = $"{normalizedReference} ({batchRef})";
 
                 // Load all entries once
                 var allEntries = await _dlaRepository.GetAllAsync();
@@ -1162,9 +1196,7 @@ namespace FinanceHubFunctions.Functions
                 try
                 {
                     var settings = await _companySettingsRepository.GetDefaultAsync();
-                    var recipientEmail = !string.IsNullOrWhiteSpace(settings?.Email)
-                        ? settings.Email
-                        : settings?.SmtpFromAddress;
+                    var recipientEmail = ResolveDlaNotificationRecipient(settings);
                     emailRecipient = recipientEmail;
                     if (!string.IsNullOrWhiteSpace(recipientEmail) && validEntries.Any())
                     {
