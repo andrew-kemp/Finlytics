@@ -32,14 +32,6 @@ namespace FinanceHubFunctions.Functions
         private readonly FinanceHubDbContext _dbContext;
         private readonly EmailService _emailService;
 
-        private static readonly HashSet<string> AllowedBatchReferences = new(StringComparer.OrdinalIgnoreCase)
-        {
-            "DLA-001",
-            "DLA-002",
-            "DLA-003",
-            "DLA-004"
-        };
-
         private static string? ResolveDlaNotificationRecipient(CompanySettings? settings)
         {
             if (settings == null) return null;
@@ -53,6 +45,35 @@ namespace FinanceHubFunctions.Functions
             };
 
             return candidates.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+        }
+
+        private async Task<string> GenerateNextBatchPaymentReferenceAsync(DateTime paymentDate, CancellationToken cancellationToken = default)
+        {
+            var periodPrefix = $"DLA-{paymentDate:yyyyMM}-";
+
+            var existingReferences = await _dbContext.DlaPayments
+                .AsNoTracking()
+                .Where(payment => payment.PaymentReference != null && payment.PaymentReference.StartsWith(periodPrefix))
+                .Select(payment => payment.PaymentReference!)
+                .ToListAsync(cancellationToken);
+
+            var nextSequence = 1;
+            foreach (var existingReference in existingReferences)
+            {
+                var rawReference = existingReference.Split(" (", 2, StringSplitOptions.None)[0].Trim();
+                if (!rawReference.StartsWith(periodPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var suffix = rawReference[periodPrefix.Length..];
+                if (int.TryParse(suffix, out var sequenceNumber) && sequenceNumber >= nextSequence)
+                {
+                    nextSequence = sequenceNumber + 1;
+                }
+            }
+
+            return $"{periodPrefix}{nextSequence:D3}";
         }
 
         public DlaFunctions(
@@ -1022,26 +1043,12 @@ namespace FinanceHubFunctions.Functions
                     return badReq;
                 }
 
-                if (string.IsNullOrWhiteSpace(request.Reference))
-                {
-                    var badReq = req.CreateResponse(HttpStatusCode.BadRequest);
-                    await badReq.WriteAsJsonAsync(new { error = "Reference is required and must be one of: DLA-001, DLA-002, DLA-003, DLA-004." });
-                    return badReq;
-                }
-
-                var normalizedReference = request.Reference.Trim().ToUpperInvariant();
-                if (!AllowedBatchReferences.Contains(normalizedReference))
-                {
-                    var badReq = req.CreateResponse(HttpStatusCode.BadRequest);
-                    await badReq.WriteAsJsonAsync(new { error = "Invalid reference. Allowed values: DLA-001, DLA-002, DLA-003, DLA-004." });
-                    return badReq;
-                }
-
                 _logger.LogInformation($"Batch payment request received: {request.DlaIds.Count} DLA IDs");
 
                 // Generate a shared batch reference for this payment run
+                string generatedReference = await GenerateNextBatchPaymentReferenceAsync(request.PaymentDate);
                 string batchRef = $"BATCH-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
-                string paymentRef = $"{normalizedReference} ({batchRef})";
+                string paymentRef = $"{generatedReference} ({batchRef})";
 
                 // Load all entries once
                 var allEntries = await _dlaRepository.GetAllAsync();
@@ -1241,6 +1248,7 @@ namespace FinanceHubFunctions.Functions
                 var response = req.CreateResponse(HttpStatusCode.OK);
                 await response.WriteAsJsonAsync(new
                 {
+                    reference = generatedReference,
                     batchRef,
                     totalAmount = totalPaid,
                     success = succeeded,

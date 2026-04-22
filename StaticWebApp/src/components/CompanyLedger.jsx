@@ -27,7 +27,6 @@ const CompanyLedger = () => {
     const [bulkDlaPaymentData, setBulkDlaPaymentData] = useState({
         paymentDate: new Date().toISOString().split('T')[0],
         paymentMethod: '',
-        reference: 'DLA-001',
         notes: ''
     });
     const [expandedDlaGroups, setExpandedDlaGroups] = useState(new Set());
@@ -338,7 +337,7 @@ const CompanyLedger = () => {
 
     const getDlaReferencePrefix = (entry) => {
         if (!entry || (entry.entryType !== 'DLA_In' && entry.entryType !== 'DLA_Out')) return null;
-        const match = (entry.notes || '').match(/Batch payment ref:\s*(DLA-\d{3})/i);
+        const match = (entry.notes || '').match(/Batch payment ref:\s*(DLA-(?:\d{6}-)?\d{3,})/i);
         return match ? match[1].toUpperCase() : null;
     };
 
@@ -459,7 +458,6 @@ const CompanyLedger = () => {
         setBulkDlaPaymentData({
             paymentDate: new Date().toISOString().split('T')[0],
             paymentMethod: '',
-            reference: 'DLA-001',
             notes: ''
         });
         setShowBulkDlaModal(true);
@@ -485,7 +483,6 @@ const CompanyLedger = () => {
                 dlaIds,
                 paymentDate: new Date(bulkDlaPaymentData.paymentDate).toISOString(),
                 paymentMethod: bulkDlaPaymentData.paymentMethod || null,
-                reference: bulkDlaPaymentData.reference || null,
                 notes: bulkDlaPaymentData.notes || null
             };
             const response = await fetch('https://financehub-func-kemponline.azurewebsites.net/api/dla/batch-payment', {
@@ -510,6 +507,7 @@ const CompanyLedger = () => {
             const successCount = result.success?.length || 0;
             const errorCount = result.errors?.length || 0;
             alert(`Batch payment recorded: ${successCount} entr${successCount === 1 ? 'y' : 'ies'} paid off` +
+                (result.reference ? `, ref ${result.reference}` : '') +
                 (errorCount > 0 ? `, ${errorCount} could not be processed` : ''));
         } catch (err) {
             console.error('Error recording batch DLA payment:', err);
@@ -1177,15 +1175,10 @@ const CompanyLedger = () => {
                                                     placeholder="e.g. Bank Transfer" />
                                             </div>
                                             <div className="form-group full-width">
-                                                <label>Payment Reference *</label>
-                                                <select value={bulkDlaPaymentData.reference}
-                                                    onChange={e => setBulkDlaPaymentData(prev => ({ ...prev, reference: e.target.value }))}
-                                                    required>
-                                                    <option value="DLA-001">DLA-001</option>
-                                                    <option value="DLA-002">DLA-002</option>
-                                                    <option value="DLA-003">DLA-003</option>
-                                                    <option value="DLA-004">DLA-004</option>
-                                                </select>
+                                                <label>Payment Reference</label>
+                                                <div style={{ padding: '0.8rem 0.95rem', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569' }}>
+                                                    Generated automatically when you submit, using the payment month and next available sequence, for example DLA-202604-001.
+                                                </div>
                                             </div>
                                             <div className="form-group full-width">
                                                 <label>Notes <span style={{ opacity: 0.55, fontSize: '0.8rem' }}>(optional)</span></label>

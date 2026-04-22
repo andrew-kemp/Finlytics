@@ -82,7 +82,6 @@ const DLA = ({ openNew }) => {
     const [bulkPaymentData, setBulkPaymentData] = useState({
         paymentDate: new Date().toISOString().split('T')[0],
         paymentMethod: '',
-        reference: '',
         notes: ''
     });
 
@@ -838,7 +837,6 @@ const DLA = ({ openNew }) => {
         setBulkPaymentData({
             paymentDate: new Date().toISOString().split('T')[0],
             paymentMethod: '',
-            reference: 'DLA-001',
             notes: ''
         });
         setShowBulkPaymentModal(true);
@@ -858,7 +856,6 @@ const DLA = ({ openNew }) => {
                 dlaIds,
                 paymentDate: new Date(bulkPaymentData.paymentDate).toISOString(),
                 paymentMethod: bulkPaymentData.paymentMethod || null,
-                reference: bulkPaymentData.reference || null,
                 notes: bulkPaymentData.notes || null
             };
 
@@ -894,6 +891,7 @@ const DLA = ({ openNew }) => {
             const emailWarning = result.emailNotification?.warning;
             showToast(
                 `Batch payment recorded: ${successCount} entr${successCount === 1 ? 'y' : 'ies'} paid off` +
+                (result.reference ? ` | Ref: ${result.reference}` : '') +
                 (errorCount > 0 ? ` | ${errorCount} skipped (${errorDetails})` : '') +
                 (emailWarning ? ` | Email notification issue: ${emailWarning}` : ''),
                 successCount === 0 ? 'error' : (errorCount > 0 || emailWarning) ? 'warning' : 'success'
@@ -2453,18 +2451,10 @@ const DLA = ({ openNew }) => {
                                         </select>
                                     </div>
                                     <div className="form-group full-width">
-                                        <label>DLA Reference *</label>
-                                        <select
-                                            name="reference"
-                                            value={bulkPaymentData.reference}
-                                            onChange={handleBulkPaymentChange}
-                                            required
-                                        >
-                                            <option value="DLA-001">DLA-001</option>
-                                            <option value="DLA-002">DLA-002</option>
-                                            <option value="DLA-003">DLA-003</option>
-                                            <option value="DLA-004">DLA-004</option>
-                                        </select>
+                                        <label>Payment Reference</label>
+                                        <div style={{ padding: '0.8rem 0.95rem', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569' }}>
+                                            Generated automatically when you submit, using the payment month and next available sequence, for example DLA-202604-001.
+                                        </div>
                                     </div>
                                     <div className="form-group full-width">
                                         <label>Notes <span style={{ opacity: 0.55, fontSize: '0.8rem' }}>(optional)</span></label>
