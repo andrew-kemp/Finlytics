@@ -838,7 +838,7 @@ const DLA = ({ openNew }) => {
         setBulkPaymentData({
             paymentDate: new Date().toISOString().split('T')[0],
             paymentMethod: '',
-            reference: '',
+            reference: 'DLA-001',
             notes: ''
         });
         setShowBulkPaymentModal(true);
@@ -2453,14 +2453,18 @@ const DLA = ({ openNew }) => {
                                         </select>
                                     </div>
                                     <div className="form-group full-width">
-                                        <label>Bank Reference <span style={{ opacity: 0.55, fontSize: '0.8rem' }}>(optional — e.g. BACS ref or transfer ID)</span></label>
-                                        <input
-                                            type="text"
+                                        <label>DLA Reference *</label>
+                                        <select
                                             name="reference"
                                             value={bulkPaymentData.reference}
                                             onChange={handleBulkPaymentChange}
-                                            placeholder="e.g. BACS-00123"
-                                        />
+                                            required
+                                        >
+                                            <option value="DLA-001">DLA-001</option>
+                                            <option value="DLA-002">DLA-002</option>
+                                            <option value="DLA-003">DLA-003</option>
+                                            <option value="DLA-004">DLA-004</option>
+                                        </select>
                                     </div>
                                     <div className="form-group full-width">
                                         <label>Notes <span style={{ opacity: 0.55, fontSize: '0.8rem' }}>(optional)</span></label>
