@@ -606,10 +606,10 @@ namespace FinanceHubFunctions.Functions
                     await notFound.WriteStringAsync("Claim not found");
                     return notFound;
                 }
-                if (claim.Status != "Posted")
+                if (claim.Status != "Posted" && claim.Status != "Submitted")
                 {
                     var conflict = req.CreateResponse(HttpStatusCode.Conflict);
-                    await conflict.WriteStringAsync("Only Posted claims can be marked as Paid");
+                    await conflict.WriteStringAsync("Only Posted or Submitted claims can be marked as Paid");
                     return conflict;
                 }
 

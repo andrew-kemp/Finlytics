@@ -117,12 +117,15 @@ const MileageTrips = ({ openNew }) => {
             setSummary(summaryData);
             setCompanySettings(settingsData);
 
-            // Build directors list from company settings
-            if (settingsData?.directors) {
-                setDirectors(settingsData.directors.split(',').map(d => d.trim()).filter(Boolean));
-            } else if (settingsData?.directorName) {
-                setDirectors([settingsData.directorName]);
-            }
+            // Build directors list from company settings + existing mileage data,
+            // so users can still claim trips even if settings are stale/missing.
+            const settingsDirectors = settingsData?.directors
+                ? settingsData.directors.split(',').map(d => d.trim()).filter(Boolean)
+                : (settingsData?.directorName ? [settingsData.directorName] : []);
+            const tripDirectors = (Array.isArray(tripsData) ? tripsData : []).map(t => t?.director).filter(Boolean);
+            const claimDirectors = (Array.isArray(claimsData) ? claimsData : []).map(c => c?.director).filter(Boolean);
+            const mergedDirectors = [...new Set([...settingsDirectors, ...tripDirectors, ...claimDirectors])];
+            setDirectors(mergedDirectors);
         } catch (err) {
             console.error(err);
             showToast(`Failed to load mileage data: ${err.message}`, 'error');
@@ -245,6 +248,10 @@ const MileageTrips = ({ openNew }) => {
     // ── generate claim ─────────────────────────────────────────────────────────
     const handleGenerateClaim = async (e) => {
         e.preventDefault();
+        if (!claimForm.director) {
+            showToast('Please select the director for this claim.', 'error');
+            return;
+        }
         setProcessing(true);
         try {
             await generateMileageClaim({ ...claimForm, taxYear });
@@ -618,7 +625,7 @@ const MileageTrips = ({ openNew }) => {
                                                         Submit → DLA
                                                     </button>
                                                 )}
-                                                {claim.status === 'Posted' && (
+                                                {(claim.status === 'Posted' || claim.status === 'Submitted') && (
                                                     <button
                                                         className="btn-secondary"
                                                         style={{ fontSize: 12, padding: '4px 10px' }}
