@@ -2480,14 +2480,15 @@ const DLA = ({ openNew }) => {
                                             <span>Send payment confirmation email</span>
                                         </label>
                                         {(() => {
-                                            const recipient = companySettings?.paymentsEmail || companySettings?.email || companySettings?.companyEmail || companySettings?.smtpFromAddress;
-                                            return recipient ? (
+                                            const selectedDlaEntries = dlaEntries.filter(e => selectedEntries.has(e.id));
+                                            const directors = [...new Set(selectedDlaEntries.map(e => e.director).filter(Boolean))];
+                                            return directors.length > 0 ? (
                                                 <div style={{ marginTop: '0.3rem', fontSize: '0.82rem', color: '#64748b' }}>
-                                                    Email will be sent to: <strong>{recipient}</strong>
+                                                    Email will be sent to: <strong>{directors.join(', ')}</strong>
                                                 </div>
                                             ) : (
                                                 <div style={{ marginTop: '0.3rem', fontSize: '0.82rem', color: '#b45309' }}>
-                                                    No notification email configured in Company Settings.
+                                                    No director information found for selected entries.
                                                 </div>
                                             );
                                         })()}

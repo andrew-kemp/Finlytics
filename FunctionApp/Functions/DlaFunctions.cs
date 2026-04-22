@@ -1195,7 +1195,36 @@ namespace FinanceHubFunctions.Functions
                 try
                 {
                     var settings = await _companySettingsRepository.GetDefaultAsync();
-                    var recipientEmail = ResolveDlaNotificationRecipient(settings);
+
+                    // Prefer the director's own email from the Employees table
+                    var directorNames = validEntries
+                        .Select(e => e.entry.Director)
+                        .Where(d => !string.IsNullOrWhiteSpace(d))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    string? recipientEmail = null;
+                    if (directorNames.Any())
+                    {
+                        var directorEmails = await _dbContext.Employees
+                            .AsNoTracking()
+                            .Where(emp => emp.IsDirector && emp.Email != null && directorNames.Contains(emp.Name))
+                            .Select(emp => emp.Email)
+                            .ToListAsync();
+
+                        var validDirectorEmails = directorEmails
+                            .Where(e => !string.IsNullOrWhiteSpace(e))
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+
+                        if (validDirectorEmails.Any())
+                            recipientEmail = string.Join(",", validDirectorEmails);
+                    }
+
+                    // Fall back to company settings if no director email found
+                    if (string.IsNullOrWhiteSpace(recipientEmail))
+                        recipientEmail = ResolveDlaNotificationRecipient(settings);
+
                     emailRecipient = recipientEmail;
                     if (!request.SendEmail)
                     {
