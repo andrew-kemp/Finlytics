@@ -159,7 +159,8 @@ namespace FinanceHubFunctions.Services
             string logoContentId = null,
             string fromAddressOverride = null,
             string[] ccAddresses = null,
-            string[] bccAddresses = null)
+            string[] bccAddresses = null,
+            string[] replyToAddresses = null)
         {
             try
             {
@@ -216,7 +217,8 @@ namespace FinanceHubFunctions.Services
                     logoContentId,
                     fromAddressOverride,
                     ccAddresses,
-                    bccAddresses);
+                    bccAddresses,
+                    replyToAddresses);
 
                 if (firstAttempt.Success)
                 {
@@ -238,7 +240,8 @@ namespace FinanceHubFunctions.Services
                     logoContentId,
                     fromAddressOverride,
                     ccAddresses,
-                    bccAddresses);
+                    bccAddresses,
+                    replyToAddresses);
 
                 return retryAttempt.Success
                     ? retryAttempt
@@ -273,7 +276,8 @@ namespace FinanceHubFunctions.Services
             string logoContentId,
             string fromAddressOverride = null,
             string[] ccAddresses = null,
-            string[] bccAddresses = null)
+            string[] bccAddresses = null,
+            string[] replyToAddresses = null)
         {
             string tempFilePath = null;
             try
@@ -309,6 +313,10 @@ namespace FinanceHubFunctions.Services
                 if (bccAddresses != null)
                     foreach (var bcc in bccAddresses)
                         if (!string.IsNullOrWhiteSpace(bcc)) mailMessage.Bcc.Add(bcc);
+
+                if (replyToAddresses != null)
+                    foreach (var replyTo in replyToAddresses)
+                        if (!string.IsNullOrWhiteSpace(replyTo)) mailMessage.ReplyToList.Add(new MailAddress(replyTo));
 
                 if (logoBytes != null && logoBytes.Length > 0 && !string.IsNullOrWhiteSpace(logoContentId))
                 {
@@ -1057,6 +1065,71 @@ namespace FinanceHubFunctions.Services
             );
         }
 
+        private async Task<EmailSendResult> SendPaymentsMailboxEmailAsync(
+            string toEmail,
+            string subject,
+            string htmlBody,
+            CompanySettings companySettings,
+            byte[]? attachmentBytes = null,
+            string? attachmentFileName = null,
+            byte[]? logoBytes = null,
+            string? logoContentType = null,
+            string? logoContentId = null)
+        {
+            var preferredFromAddress = !string.IsNullOrWhiteSpace(companySettings.PaymentsEmail)
+                ? companySettings.PaymentsEmail
+                : companySettings.SmtpFromAddress;
+            var primaryBccAddresses = !string.IsNullOrWhiteSpace(preferredFromAddress)
+                ? new[] { preferredFromAddress }
+                : null;
+
+            var primaryAttempt = await SendEmailWithResultAsync(
+                toEmail,
+                subject,
+                htmlBody,
+                accessToken: "",
+                attachmentBytes,
+                attachmentFileName,
+                logoBytes,
+                logoContentType,
+                logoContentId,
+                preferredFromAddress,
+                null,
+                primaryBccAddresses);
+
+            if (primaryAttempt.Success ||
+                string.IsNullOrWhiteSpace(companySettings.PaymentsEmail) ||
+                string.Equals(preferredFromAddress, companySettings.SmtpFromAddress, StringComparison.OrdinalIgnoreCase))
+            {
+                return primaryAttempt;
+            }
+
+            _logger.LogWarning(
+                "Primary DLA email send using PaymentsEmail '{PaymentsEmail}' failed. Retrying via SMTP from-address '{SmtpFromAddress}' with Reply-To set to PaymentsEmail. Error: {Error}",
+                companySettings.PaymentsEmail,
+                companySettings.SmtpFromAddress,
+                primaryAttempt.Error);
+
+            var fallbackBccAddresses = !string.IsNullOrWhiteSpace(companySettings.PaymentsEmail)
+                ? new[] { companySettings.PaymentsEmail }
+                : primaryBccAddresses;
+
+            return await SendEmailWithResultAsync(
+                toEmail,
+                subject,
+                htmlBody,
+                accessToken: "",
+                attachmentBytes,
+                attachmentFileName,
+                logoBytes,
+                logoContentType,
+                logoContentId,
+                companySettings.SmtpFromAddress,
+                null,
+                fallbackBccAddresses,
+                new[] { companySettings.PaymentsEmail! });
+        }
+
         // ─── DLA Payment email ───────────────────────────────────────────────────
         public async Task<EmailSendResult> SendDlaPaymentEmailAsync(
             string toEmail,
@@ -1100,21 +1173,16 @@ namespace FinanceHubFunctions.Services
             var (logoBytes, logoContentType, logoContentId, logoSrcOverride) = await TryGetInlineLogoAsync(companySettings);
             var htmlBody = await emailTemplate.GenerateEmailHtmlAsync("dla_payment", companySettings, placeholders, logoSrcOverride);
 
-            var fromAddress = !string.IsNullOrWhiteSpace(companySettings.PaymentsEmail)
-                ? companySettings.PaymentsEmail
-                : companySettings.SmtpFromAddress;
-
-            return await SendEmailWithResultAsync(
+            return await SendPaymentsMailboxEmailAsync(
                 toEmail,
                 $"DLA Payment — {dlaId} — £{paymentAmount:N2} — {statusLabel}",
                 htmlBody,
-                accessToken: "",
+                companySettings,
                 csvBytes,
                 csvFileName,
                 logoBytes,
                 logoContentType,
-                logoContentId,
-                fromAddress);
+                logoContentId);
         }
 
         // ─── DLA Batch Payment email ─────────────────────────────────────────────
@@ -1161,21 +1229,16 @@ namespace FinanceHubFunctions.Services
             var (logoBytes, logoContentType, logoContentId, logoSrcOverride) = await TryGetInlineLogoAsync(companySettings);
             var htmlBody = await emailTemplate.GenerateEmailHtmlAsync("dla_batch_payment", companySettings, placeholders, logoSrcOverride);
 
-            var fromAddress = !string.IsNullOrWhiteSpace(companySettings.PaymentsEmail)
-                ? companySettings.PaymentsEmail
-                : companySettings.SmtpFromAddress;
-
-            return await SendEmailWithResultAsync(
+            return await SendPaymentsMailboxEmailAsync(
                 toEmail,
                 $"DLA Batch Payment — {entries.Count} entries — £{totalAmount:N2} — {batchRef}",
                 htmlBody,
-                accessToken: "",
+                companySettings,
                 csvBytes,
                 csvFileName,
                 logoBytes,
                 logoContentType,
-                logoContentId,
-                fromAddress);
+                logoContentId);
         }
     }
 }
