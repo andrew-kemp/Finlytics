@@ -1195,16 +1195,21 @@ namespace FinanceHubFunctions.Functions
                 try
                 {
                     var settings = await _companySettingsRepository.GetDefaultAsync();
+                    var recipientEmailFromRequest = request.RecipientEmail?.Trim();
 
-                    // Prefer the director's own email from the Employees table
+                    // If caller explicitly provided a recipient, use that first.
+                    string? recipientEmail = string.IsNullOrWhiteSpace(recipientEmailFromRequest)
+                        ? null
+                        : recipientEmailFromRequest;
+
+                    // Otherwise prefer the director's own email from the Employees table.
                     var directorNames = validEntries
                         .Select(e => e.entry.Director)
                         .Where(d => !string.IsNullOrWhiteSpace(d))
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .ToList();
 
-                    string? recipientEmail = null;
-                    if (directorNames.Any())
+                    if (string.IsNullOrWhiteSpace(recipientEmail) && directorNames.Any())
                     {
                         var directorEmails = await _dbContext.Employees
                             .AsNoTracking()

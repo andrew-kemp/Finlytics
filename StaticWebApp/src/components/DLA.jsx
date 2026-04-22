@@ -83,7 +83,8 @@ const DLA = ({ openNew }) => {
         paymentDate: new Date().toISOString().split('T')[0],
         paymentMethod: '',
         notes: '',
-        sendEmail: true
+        sendEmail: true,
+        recipientEmail: ''
     });
 
     // Delete select mode (separate from bulk payment selectMode)
@@ -835,11 +836,14 @@ const DLA = ({ openNew }) => {
     };
 
     const openBulkPaymentModal = () => {
+        const defaultRecipient = companySettings?.paymentsEmail || companySettings?.email || '';
+
         setBulkPaymentData({
             paymentDate: new Date().toISOString().split('T')[0],
             paymentMethod: '',
             notes: '',
-            sendEmail: true
+            sendEmail: true,
+            recipientEmail: defaultRecipient
         });
         setShowBulkPaymentModal(true);
     };
@@ -854,12 +858,19 @@ const DLA = ({ openNew }) => {
             const selectedDlaEntries = dlaEntries.filter(e => selectedEntries.has(e.id));
             const dlaIds = selectedDlaEntries.map(e => e.dlaId);
 
+            if (bulkPaymentData.sendEmail && !bulkPaymentData.recipientEmail?.trim()) {
+                showToast('Please enter an email address for the payment confirmation.', 'error');
+                setProcessing(false);
+                return;
+            }
+
             const payload = {
                 dlaIds,
                 paymentDate: new Date(bulkPaymentData.paymentDate).toISOString(),
                 paymentMethod: bulkPaymentData.paymentMethod || null,
                 notes: bulkPaymentData.notes || null,
-                sendEmail: bulkPaymentData.sendEmail !== false
+                sendEmail: bulkPaymentData.sendEmail !== false,
+                recipientEmail: bulkPaymentData.sendEmail ? bulkPaymentData.recipientEmail.trim() : null
             };
 
             const response = await fetch(`${API_BASE_URL}/dla/batch-payment`, {
@@ -2484,7 +2495,7 @@ const DLA = ({ openNew }) => {
                                             const directors = [...new Set(selectedDlaEntries.map(e => e.director).filter(Boolean))];
                                             return directors.length > 0 ? (
                                                 <div style={{ marginTop: '0.3rem', fontSize: '0.82rem', color: '#64748b' }}>
-                                                    Email will be sent to: <strong>{directors.join(', ')}</strong>
+                                                    Directors in this batch: <strong>{directors.join(', ')}</strong>
                                                 </div>
                                             ) : (
                                                 <div style={{ marginTop: '0.3rem', fontSize: '0.82rem', color: '#b45309' }}>
@@ -2492,6 +2503,20 @@ const DLA = ({ openNew }) => {
                                                 </div>
                                             );
                                         })()}
+
+                                        {bulkPaymentData.sendEmail && (
+                                            <div style={{ marginTop: '0.65rem' }}>
+                                                <label>Email address to send to *</label>
+                                                <input
+                                                    type="email"
+                                                    name="recipientEmail"
+                                                    value={bulkPaymentData.recipientEmail || ''}
+                                                    onChange={handleBulkPaymentChange}
+                                                    placeholder="name@company.com"
+                                                    required={!!bulkPaymentData.sendEmail}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="form-actions">

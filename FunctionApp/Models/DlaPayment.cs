@@ -53,5 +53,6 @@ namespace FinanceHubFunctions.Models
         public string? Reference { get; set; }
         public string? Notes { get; set; }
         public bool SendEmail { get; set; } = true;
+        public string? RecipientEmail { get; set; }
     }
 }
