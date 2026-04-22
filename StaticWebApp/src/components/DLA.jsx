@@ -2477,8 +2477,20 @@ const DLA = ({ openNew }) => {
                                                 checked={!!bulkPaymentData.sendEmail}
                                                 onChange={handleBulkPaymentChange}
                                             />
-                                            <span>Send payment confirmation email (same process as invoices)</span>
+                                            <span>Send payment confirmation email</span>
                                         </label>
+                                        {(() => {
+                                            const recipient = companySettings?.paymentsEmail || companySettings?.email || companySettings?.companyEmail || companySettings?.smtpFromAddress;
+                                            return recipient ? (
+                                                <div style={{ marginTop: '0.3rem', fontSize: '0.82rem', color: '#64748b' }}>
+                                                    Email will be sent to: <strong>{recipient}</strong>
+                                                </div>
+                                            ) : (
+                                                <div style={{ marginTop: '0.3rem', fontSize: '0.82rem', color: '#b45309' }}>
+                                                    No notification email configured in Company Settings.
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                                 <div className="form-actions">
