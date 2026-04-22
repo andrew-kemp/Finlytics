@@ -52,5 +52,6 @@ namespace FinanceHubFunctions.Models
         public string? PaymentMethod { get; set; }
         public string? Reference { get; set; }
         public string? Notes { get; set; }
+        public bool SendEmail { get; set; } = true;
     }
 }

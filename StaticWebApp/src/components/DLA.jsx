@@ -82,7 +82,8 @@ const DLA = ({ openNew }) => {
     const [bulkPaymentData, setBulkPaymentData] = useState({
         paymentDate: new Date().toISOString().split('T')[0],
         paymentMethod: '',
-        notes: ''
+        notes: '',
+        sendEmail: true
     });
 
     // Delete select mode (separate from bulk payment selectMode)
@@ -829,15 +830,16 @@ const DLA = ({ openNew }) => {
     };
 
     const handleBulkPaymentChange = (e) => {
-        const { name, value } = e.target;
-        setBulkPaymentData(prev => ({ ...prev, [name]: value }));
+        const { name, value, type, checked } = e.target;
+        setBulkPaymentData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
     };
 
     const openBulkPaymentModal = () => {
         setBulkPaymentData({
             paymentDate: new Date().toISOString().split('T')[0],
             paymentMethod: '',
-            notes: ''
+            notes: '',
+            sendEmail: true
         });
         setShowBulkPaymentModal(true);
     };
@@ -856,7 +858,8 @@ const DLA = ({ openNew }) => {
                 dlaIds,
                 paymentDate: new Date(bulkPaymentData.paymentDate).toISOString(),
                 paymentMethod: bulkPaymentData.paymentMethod || null,
-                notes: bulkPaymentData.notes || null
+                notes: bulkPaymentData.notes || null,
+                sendEmail: bulkPaymentData.sendEmail !== false
             };
 
             const response = await fetch(`${API_BASE_URL}/dla/batch-payment`, {
@@ -2465,6 +2468,17 @@ const DLA = ({ openNew }) => {
                                             rows="2"
                                             placeholder="e.g. Monthly director repayment"
                                         />
+                                    </div>
+                                    <div className="form-group full-width">
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', cursor: 'pointer' }}>
+                                            <input
+                                                type="checkbox"
+                                                name="sendEmail"
+                                                checked={!!bulkPaymentData.sendEmail}
+                                                onChange={handleBulkPaymentChange}
+                                            />
+                                            <span>Send payment confirmation email (same process as invoices)</span>
+                                        </label>
                                     </div>
                                 </div>
                                 <div className="form-actions">

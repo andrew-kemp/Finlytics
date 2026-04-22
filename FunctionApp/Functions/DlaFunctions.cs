@@ -1197,7 +1197,11 @@ namespace FinanceHubFunctions.Functions
                     var settings = await _companySettingsRepository.GetDefaultAsync();
                     var recipientEmail = ResolveDlaNotificationRecipient(settings);
                     emailRecipient = recipientEmail;
-                    if (!string.IsNullOrWhiteSpace(recipientEmail) && validEntries.Any())
+                    if (!request.SendEmail)
+                    {
+                        _logger.LogInformation("DLA batch payment email skipped for {BatchRef}: sendEmail=false", batchRef);
+                    }
+                    else if (!string.IsNullOrWhiteSpace(recipientEmail) && validEntries.Any())
                     {
                         emailAttempted = true;
                         var csvLines = new List<string> { "DLA ID,Director,Description,Amount,Payment Date,Payment Method,Reference" };
